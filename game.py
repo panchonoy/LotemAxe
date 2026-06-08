@@ -5,7 +5,7 @@ import pygame
 
 from settings import *
 from player import Player, P1_KEYS, P2_KEYS
-from enemy import Boss, TeacherBoss, RollerBoss, Grunt
+from enemy import Boss, TeacherBoss, RollerBoss, Grunt, Heavy, Healer
 from particles import spawn_hit, spawn_magic, spawn_death, spawn_pee, spawn_tornado, spawn_heal
 from level import Level
 from pickups import Pickup
@@ -195,7 +195,15 @@ class Game:
                 pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    pygame.quit(); sys.exit()
+                    if self.state == PLAYING:
+                        # Return to menu (saves progress for hi-score)
+                        if self.score > self.hiscore:
+                            self.hiscore = self.score
+                            _save_hiscore(self.hiscore)
+                        self._new_game()
+                        self.state = MENU
+                    else:
+                        pygame.quit(); sys.exit()
 
                 if self.state == MENU:
                     if event.key == pygame.K_1:
@@ -279,6 +287,14 @@ class Game:
             if isinstance(e, Boss):
                 sfx.play('boss_roar', 1.0)
         self.enemies.extend(new_spawns)
+
+        # Swarm warning flash
+        if self.level.swarm_active:
+            self.level.swarm_active = False
+            self._float_texts.append([SCREEN_W // 2, SCREEN_H // 3,
+                                      '!! SWARM !!', (255, 55, 55), 110])
+            self._shake       = max(self._shake, 10.0)
+            self._magic_flash = max(self._magic_flash, 25)
 
         # --- Enemy update + combat ---
         dead_this_frame = []
@@ -392,7 +408,43 @@ class Game:
                         spawn_death(self.particles, scr_x, enemy.rect.centery,
                                     enemy.death_color)
 
-        # --- Lava damage ---
+        # --- Lava: enemy avoidance + typed damage ---
+        # Heavy and Healer are immune; others take slow damage and avoid the edge
+        _LAVA_IMMUNE = (Heavy, Healer)
+        for lx1, lx2 in self.level.lava:
+            for enemy in self.enemies:
+                if enemy.dead:
+                    continue
+                if isinstance(enemy, _LAVA_IMMUNE):
+                    continue  # immune — walk right through
+                ecx = enemy.rect.centerx
+                # Smart avoidance: stop 12px before the lava edge
+                if enemy.on_ground and not isinstance(enemy, (Boss, TeacherBoss, RollerBoss)):
+                    if enemy.vx > 0 and lx1 - 12 < ecx < lx1 + 8:
+                        enemy.vx = 0.0  # halt before left edge
+                    elif enemy.vx < 0 and lx2 - 8 < ecx < lx2 + 12:
+                        enemy.vx = 0.0  # halt before right edge
+
+                if enemy.on_ground and lx1 <= ecx <= lx2:
+                    # Slow tick damage (1 HP every 30 frames per enemy)
+                    eid = id(enemy)
+                    self._lava_timers[eid] = self._lava_timers.get(eid, 0) + 1
+                    if self._lava_timers[eid] >= 30:
+                        self._lava_timers[eid] = 0
+                        enemy.hp = max(0, enemy.hp - 1)
+                        if enemy.hp == 0:
+                            enemy.dead       = True
+                            enemy._die_timer = 36
+                            enemy._die_vx    = 0.0
+                            enemy._die_vy    = -4.0
+                            self.score += enemy.score_value
+                            scr_x = ecx - int(self.camera_x)
+                            spawn_death(self.particles, scr_x, enemy.rect.centery,
+                                        enemy.death_color)
+                else:
+                    self._lava_timers.pop(id(enemy), None)
+
+        # --- Lava damage to players ---
         for lx1, lx2 in self.level.lava:
             for i, player in enumerate(self.players):
                 if player.dead or player.out_of_lives:
@@ -408,19 +460,6 @@ class Game:
                             player._die()
                 else:
                     self._lava_timers[i] = 0
-            for enemy in self.enemies:
-                if not enemy.dead and enemy.on_ground:
-                    if lx1 <= enemy.rect.centerx <= lx2:
-                        enemy.hp = max(0, enemy.hp - 1)
-                        if enemy.hp == 0:
-                            enemy.dead       = True
-                            enemy._die_timer = 36
-                            enemy._die_vx    = 0.0
-                            enemy._die_vy    = -4.0
-                            self.score += enemy.score_value
-                            scr_x = enemy.rect.centerx - int(self.camera_x)
-                            spawn_death(self.particles, scr_x, enemy.rect.centery,
-                                        enemy.death_color)
 
         # --- Healer ally healing ---
         for enemy in self.enemies:
@@ -701,8 +740,10 @@ class Game:
         ui.draw_hud(self.screen, self.players, self.score, self.enemies)
 
         for fx, fy, text, col, life in self._float_texts:
-            alpha = max(0, int(255 * life / 50))
-            surf  = self.font_float.render(text, True, col)
+            max_life = 110 if text.startswith('!!') else 55
+            alpha = max(0, int(255 * life / max_life))
+            font  = self.font_big if text.startswith('!!') else self.font_float
+            surf  = font.render(text, True, col)
             surf.set_alpha(alpha)
             self.screen.blit(surf, (fx - surf.get_width() // 2, fy))
 
@@ -748,6 +789,7 @@ class Game:
         lines = [
             ('P1  Arrows/WASD : Move   Space : Jump   Ins : Attack   Del : Heavy   Home : Magic', WHITE),
             ('P2  J / L : Move   I : Jump   , : Attack   . : Heavy   ; : Magic',                  (200, 220, 255)),
+            ('ESC during game = return to menu',                                                   (160, 160, 160)),
         ]
         for i, (text, col) in enumerate(lines):
             t = self.font_hint.render(text, True, col)

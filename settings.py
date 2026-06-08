@@ -108,20 +108,20 @@ INVINCIBILITY_DUR  = 120   # post-respawn invincibility frames
 # --- Grunt (Barbarian minion) ---
 E_W         = 36
 E_H         = 64
-E_SPEED     = 1.7
-E_HP        = 50
-E_ATK_DMG   = 8
+E_SPEED     = 1.9    # was 1.7 — more aggressive
+E_HP        = 55    # was 50
+E_ATK_DMG   = 10   # was 8
 E_ATK_RANGE = 54
-E_ATK_CD    = 68
+E_ATK_CD    = 62   # slightly faster attacks
 E_HURT_DUR  = 16
 E_SCORE     = 100
 
 # --- Heavy (armoured bruiser) ---
 H_W         = 46
 H_H         = 76
-H_SPEED     = 1.1
-H_HP        = 110
-H_ATK_DMG   = 15
+H_SPEED     = 1.25  # was 1.1
+H_HP        = 120   # was 110
+H_ATK_DMG   = 18   # was 15
 H_ATK_RANGE = 64
 H_ATK_CD    = 55
 H_HURT_DUR  = 18
@@ -203,7 +203,8 @@ SPAWNS = [
     (800, [(1900, 'grunt'), (2100, 'grunt')]),
     (1200, [(2300, 'grunt'), (2450, 'heavy'), (2600, 'grunt'), (2800, 'grunt')]),
     (1800, [(3000, 'heavy'), (3200, 'grunt')]),
-    (2200, [(3400, 'grunt'), (3600, 'heavy'), (3800, 'grunt')]),
+    # --- SWARM (L1) ---
+    (2400, [(3500, 'swarm')]),
     (2800, [(4000, 'grunt'), (4200, 'heavy'), (4400, 'grunt'), (4600, 'heavy')]),
     (3400, [(4800, 'heavy'), (5000, 'grunt')]),
     (3800, [(5200, 'grunt'), (5400, 'thrower'), (5600, 'grunt'), (5800, 'heavy'), (6000, 'thrower')]),
@@ -219,7 +220,8 @@ SPAWNS_L2 = [
     (700, [(1800, 'heavy'), (2000, 'heavy')]),
     (1100, [(2200, 'grunt'), (2400, 'heavy'), (2600, 'grunt'), (2800, 'heavy')]),
     (1700, [(3000, 'heavy'), (3200, 'grunt'), (3400, 'heavy')]),
-    (2300, [(3600, 'grunt'), (3800, 'heavy'), (4000, 'grunt'), (4200, 'heavy')]),
+    # --- SWARM (L2) ---
+    (2400, [(3700, 'swarm')]),
     (3000, [(4400, 'jumper'), (4600, 'grunt'), (4800, 'jumper'), (5000, 'thrower')]),
     (3800, [(5200, 'heavy'), (5400, 'healer'), (5600, 'jumper')]),
     (4500, [(5800, 'thrower'), (6000, 'heavy'), (6200, 'jumper'), (6400, 'heavy')]),
@@ -295,14 +297,14 @@ LAVA_INTERVAL = 45   # frames between lava damage ticks (~0.75 s)
 # ---------------------------------------------------------------------------
 B_LUNGE_DMG    = 35
 B_LUNGE_RANGE  = 180
-B_LUNGE_CD     = 200   # frames between lunge attempts
-B_LUNGE_WINDUP = 30    # telegraph glow frames
-B_LUNGE_DUR    = 20    # active hitbox frames
+B_LUNGE_CD     = 130   # frames between lunge attempts
+B_LUNGE_WINDUP = 26    # telegraph glow frames
+B_LUNGE_DUR    = 22    # active hitbox frames
 B_SLAM_DMG     = 20
 B_SLAM_RANGE   = 130   # shockwave radius
 B_SLAM_VY      = -13.0
-B_SLAM_CD      = 300
-B_P2_CHARGE_CD = 120   # reduced charge cooldown in phase 2
+B_SLAM_CD      = 240
+B_P2_CHARGE_CD = 80    # reduced charge cooldown in phase 2
 
 # ---------------------------------------------------------------------------
 # Teacher Boss (Level 2 boss)
@@ -313,10 +315,10 @@ TB_SPEED       = 1.4
 TB_HP          = 500
 TB_ATK_DMG     = 25    # Ruler Sweep damage
 TB_ATK_RANGE   = 250
-TB_ATK_CD      = 55
+TB_ATK_CD      = 38
 TB_CHALK_DMG   = 18
-TB_CHALK_SPD   = 6
-TB_CHALK_CD    = 90
+TB_CHALK_SPD   = 7
+TB_CHALK_CD    = 55
 TB_SCORE       = 4000
 TB_BODY        = ( 80,  80,  90)
 TB_HEAD        = (210, 180, 155)
@@ -334,7 +336,7 @@ RB_ATK_DMG     = 18
 RB_ATK_RANGE   = 70
 RB_ATK_CD      = 50
 RB_DASH_DMG    = 22
-RB_DASH_CD     = 80
+RB_DASH_CD     = 52
 RB_DASH_SPD    = 12.0
 RB_SPIN_DMG    = 12
 RB_SPIN_RAD    = 100
@@ -382,7 +384,9 @@ SPAWNS_L3 = [
     (800, [(2000, 'thrower'),(2200, 'grunt'),  (2400, 'jumper')]),
     (1200, [(2700, 'heavy'), (2900, 'jumper'), (3100, 'thrower'), (3300, 'grunt')]),
     (1800, [(3500, 'jumper'),(3700, 'healer'), (3900, 'jumper')]),
-    (2400, [(4100, 'heavy'), (4300, 'thrower'),(4500, 'jumper'), (4700, 'heavy')]),
+    # --- SWARM (L3) ---
+    (2200, [(4000, 'swarm')]),
+    (2700, [(4100, 'heavy'), (4300, 'thrower'),(4500, 'jumper'), (4700, 'heavy')]),
     (3100, [(4900, 'jumper'),(5100, 'healer'), (5300, 'heavy'),  (5500, 'jumper')]),
     (3900, [(5700, 'thrower'),(5900, 'jumper'),(6100, 'heavy'),  (6300, 'thrower')]),
     (4600, [(6500, 'jumper'),(6700, 'heavy'),  (6900, 'jumper')]),

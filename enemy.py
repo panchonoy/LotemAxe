@@ -433,8 +433,8 @@ class Boss:
                 self.vx = math.copysign(self.CHARGE_SPEED, dx)
                 self.facing = 1 if dx > 0 else -1
 
-        # Lunge attack (triggers when phase2 active)
-        if self.phase2 and self._charge_timer == 0 and self.hurt_timer == 0:
+        # Lunge attack (triggers at 70% HP — earlier than phase 2)
+        if self.hp < self.max_hp * 0.7 and self._charge_timer == 0 and self.hurt_timer == 0:
             if self._lunge_state == 0:
                 if self._lunge_cd > 0:
                     self._lunge_cd -= 1
@@ -484,12 +484,16 @@ class Boss:
         if self._charge_timer <= 0 and self._lunge_state != 2:
             if self.hurt_timer <= 0 and self._lunge_state == 0:
                 if abs(dx) > self.ATK_RANGE + 15:
-                    speed = self.SPEED * (1.4 if self.phase2 else 1.0)
+                    speed = self.SPEED * (1.7 if self.phase2 else 1.1)
                     self.vx = math.copysign(speed, dx)
                     self.facing = 1 if dx > 0 else -1
                     self._walk_t += 1
                 else:
-                    self.vx = 0.0
+                    # In attack range: strafe slowly to stay threatening
+                    if self.phase2:
+                        self.vx = math.copysign(self.SPEED * 0.4, dx) if abs(dx) > 20 else 0.0
+                    else:
+                        self.vx = 0.0
                     self.facing = 1 if dx >= 0 else -1
             elif self.hurt_timer > 0:
                 self.vx *= 0.8

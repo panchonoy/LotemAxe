@@ -9,7 +9,8 @@ class Level:
     """Manages the background scenery and enemy spawn triggers."""
 
     def __init__(self, level_num=1):
-        self.level_num = level_num
+        self.level_num    = level_num
+        self.swarm_active = False   # set True when swarm triggers; game.py reads + resets
         if level_num == 1:
             spawns = SPAWNS
         elif level_num == 2:
@@ -115,6 +116,9 @@ class Level:
                         new_enemies.append(Jumper(wx, GROUND_Y - Jumper.H))
                     elif kind == 'healer':
                         new_enemies.append(Healer(wx, GROUND_Y - Healer.H))
+                    elif kind == 'swarm':
+                        new_enemies += self._build_swarm(wx)
+                        self.swarm_active = True
                     elif kind == 'boss':
                         if self.level_num == 2:
                             new_enemies.append(TeacherBoss(wx, GROUND_Y - TeacherBoss.H))
@@ -131,6 +135,44 @@ class Level:
     def spawn_grunt(self, wx):
         """Spawn a single grunt — used by TeacherBoss reinforcements."""
         return Grunt(wx, GROUND_Y - Grunt.H)
+
+    def _build_swarm(self, wx):
+        """Build the swarm wave appropriate for this level."""
+        if self.level_num == 1:
+            # Level 1: pack of grunts + a couple heavies
+            return [
+                Grunt(wx,       GROUND_Y - Grunt.H),
+                Grunt(wx + 55,  GROUND_Y - Grunt.H),
+                Heavy(wx + 110, GROUND_Y - Heavy.H),
+                Grunt(wx + 170, GROUND_Y - Grunt.H),
+                Grunt(wx + 225, GROUND_Y - Grunt.H),
+                Heavy(wx + 285, GROUND_Y - Heavy.H),
+                Grunt(wx + 345, GROUND_Y - Grunt.H),
+            ]
+        elif self.level_num == 2:
+            # Level 2: heavier + jumper mix
+            return [
+                Heavy(wx,       GROUND_Y - Heavy.H),
+                Jumper(wx + 60, GROUND_Y - Jumper.H),
+                Heavy(wx + 120, GROUND_Y - Heavy.H),
+                Grunt(wx + 180, GROUND_Y - Grunt.H),
+                Jumper(wx + 235, GROUND_Y - Jumper.H),
+                Heavy(wx + 295, GROUND_Y - Heavy.H),
+                Thrower(wx + 360, GROUND_Y - Thrower.H),
+                Grunt(wx + 420, GROUND_Y - Grunt.H),
+            ]
+        else:
+            # Level 3: jumpers + throwers, very chaotic
+            return [
+                Jumper(wx,       GROUND_Y - Jumper.H),
+                Thrower(wx + 55, GROUND_Y - Thrower.H),
+                Jumper(wx + 110, GROUND_Y - Jumper.H),
+                Heavy(wx + 170,  GROUND_Y - Heavy.H),
+                Jumper(wx + 230, GROUND_Y - Jumper.H),
+                Thrower(wx + 290, GROUND_Y - Thrower.H),
+                Jumper(wx + 350, GROUND_Y - Jumper.H),
+                Heavy(wx + 410,  GROUND_Y - Heavy.H),
+            ]
 
     # ------------------------------------------------------------------ draw
     def draw_background(self, surface, camera_x):
