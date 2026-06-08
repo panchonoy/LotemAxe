@@ -1,0 +1,109 @@
+import pygame
+import math
+import random
+from settings import HIT_COL, SPARK_COL, MAGIC_FX, WHITE
+
+
+class Particle:
+    def __init__(self, x, y, vx, vy, life, color, radius=4, gravity=0.28):
+        self.x = float(x)
+        self.y = float(y)
+        self.vx = float(vx)
+        self.vy = float(vy)
+        self.life = life
+        self.max_life = life
+        self.color = color
+        self.radius = radius
+        self.gravity = gravity
+
+    def update(self):
+        self.x += self.vx
+        self.y += self.vy
+        self.vy += self.gravity
+        self.vx *= 0.96
+        self.life -= 1
+        return self.life > 0
+
+    def draw(self, surface, cam_x):
+        r = max(1, int(self.radius * self.life / self.max_life))
+        sx = int(self.x) - cam_x
+        sy = int(self.y)
+        if -r <= sx <= 1040 + r and -r <= sy <= 600 + r:
+            pygame.draw.circle(surface, self.color, (sx, sy), r)
+
+
+class RingParticle:
+    """Expanding shockwave ring that fades as it grows."""
+    def __init__(self, x, y, max_radius, color, life=22):
+        self.x = x
+        self.y = y
+        self.max_radius = max_radius
+        self.color = color
+        self.life = life
+        self.max_life = life
+
+    def update(self):
+        self.life -= 1
+        return self.life > 0
+
+    def draw(self, surface, cam_x):
+        t = 1.0 - self.life / self.max_life
+        radius = max(2, int(self.max_radius * t))
+        alpha  = self.life / self.max_life
+        col    = tuple(int(c * alpha) for c in self.color)
+        width  = max(1, int(5 * alpha))
+        sx = int(self.x) - cam_x
+        sy = int(self.y)
+        pygame.draw.circle(surface, col, (sx, sy), radius, width)
+
+
+def spawn_hit(particles, x, y):
+    for _ in range(9):
+        angle = random.uniform(0, math.pi * 2)
+        speed = random.uniform(2, 6)
+        col = random.choice([HIT_COL, SPARK_COL, WHITE])
+        particles.append(Particle(
+            x, y,
+            math.cos(angle) * speed,
+            math.sin(angle) * speed - 2,
+            random.randint(8, 18),
+            col,
+            random.randint(3, 6),
+        ))
+
+
+def spawn_magic(particles, x, y, radius):
+    # Expanding shockwave rings
+    particles.append(RingParticle(x, y, radius,        (100, 160, 255), life=22))
+    particles.append(RingParticle(x, y, radius * 0.65, (180, 210, 255), life=16))
+
+    # Radial sparks
+    for _ in range(40):
+        angle = random.uniform(0, math.pi * 2)
+        dist = random.uniform(0, radius)
+        speed = random.uniform(3, 9)
+        col = random.choice([MAGIC_FX, WHITE, (120, 160, 255)])
+        particles.append(Particle(
+            x + math.cos(angle) * dist,
+            y + math.sin(angle) * dist,
+            math.cos(angle) * speed,
+            math.sin(angle) * speed - 3,
+            random.randint(14, 28),
+            col,
+            random.randint(4, 8),
+            gravity=0.1,
+        ))
+
+
+def spawn_death(particles, x, y, color):
+    for _ in range(16):
+        angle = random.uniform(0, math.pi * 2)
+        speed = random.uniform(1, 5)
+        particles.append(Particle(
+            x, y,
+            math.cos(angle) * speed,
+            math.sin(angle) * speed - 3,
+            random.randint(18, 30),
+            color,
+            random.randint(4, 7),
+        ))
