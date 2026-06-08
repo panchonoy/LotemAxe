@@ -60,10 +60,11 @@ class Grunt:
         self.death_color = self.DEATH_COL
         self.atk_dmg     = self.ATK_DMG
 
-        self._walk_t    = 0
-        self._die_timer = 0
-        self._die_vx    = 0.0
-        self._die_vy    = 0.0
+        self._walk_t      = 0
+        self._die_timer   = 0
+        self._die_vx      = 0.0
+        self._die_vy      = 0.0
+        self._pit_avoid_cd = 0  # frames before this enemy can re-evaluate pit avoidance
 
     @property
     def rect(self):

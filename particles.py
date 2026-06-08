@@ -107,3 +107,66 @@ def spawn_death(particles, x, y, color):
             color,
             random.randint(4, 7),
         ))
+
+
+def spawn_pee(particles, x, y, facing):
+    """Yellow forward stream — Lotem's magic."""
+    for _ in range(26):
+        angle = random.uniform(-0.45, 0.45)
+        speed = random.uniform(4, 9)
+        vx = math.cos(angle) * speed * facing
+        vy = math.sin(angle) * speed - 1.5
+        col = random.choice([(255, 230, 50), (240, 210, 30), (210, 200, 40)])
+        particles.append(Particle(
+            x, y, vx, vy,
+            random.randint(14, 22), col,
+            random.randint(3, 6), gravity=0.18,
+        ))
+    # Extended reach droplets
+    for _ in range(10):
+        dist = random.uniform(20, 110)
+        angle = random.uniform(-0.12, 0.12)
+        particles.append(Particle(
+            x + math.cos(angle) * dist * facing,
+            y + math.sin(angle) * dist,
+            math.cos(angle) * 1.5 * facing,
+            math.sin(angle) * 0.8,
+            random.randint(10, 18), (255, 240, 60),
+            random.randint(3, 5), gravity=0.12,
+        ))
+
+
+def spawn_tornado(particles, x, y):
+    """Swirling green tornado — Gal's magic."""
+    particles.append(RingParticle(x, y, 150, (60, 200,  80), life=24))
+    particles.append(RingParticle(x, y, 100, (80, 230, 100), life=18))
+    for _ in range(50):
+        angle = random.uniform(0, math.pi * 2)
+        dist  = random.uniform(0, 150)
+        speed = random.uniform(2, 8)
+        col   = random.choice([(60, 200, 80), (80, 230, 100), (40, 160, 60), WHITE])
+        # Tangential velocity for spin effect
+        particles.append(Particle(
+            x + math.cos(angle) * dist,
+            y + math.sin(angle) * dist,
+            math.cos(angle + math.pi / 2) * speed,
+            math.sin(angle + math.pi / 2) * speed - 4,
+            random.randint(16, 28), col,
+            random.randint(3, 7), gravity=0.05,
+        ))
+
+
+def spawn_heal(particles, x, y):
+    """Green sparkles — Healer casting a heal."""
+    for _ in range(14):
+        angle = random.uniform(0, math.pi * 2)
+        speed = random.uniform(1.5, 4)
+        col = random.choice([(80, 220, 80), (120, 255, 120), (60, 200, 100)])
+        particles.append(Particle(
+            x, y,
+            math.cos(angle) * speed,
+            math.sin(angle) * speed - 3,
+            random.randint(18, 30), col,
+            random.randint(3, 5), gravity=0.05,
+        ))
+    particles.append(RingParticle(x, y, 60, (80, 200, 80), life=16))

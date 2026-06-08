@@ -105,19 +105,25 @@ class Level:
         remaining = []
         for trigger_x, spawn_list in self._pending:
             if camera_x >= trigger_x:
+                has_regular = False
                 for wx, kind in spawn_list:
                     if kind == 'grunt':
                         new_enemies.append(Grunt(wx, GROUND_Y - Grunt.H))
+                        has_regular = True
                     elif kind == 'heavy':
                         new_enemies.append(Heavy(wx, GROUND_Y - Heavy.H))
+                        has_regular = True
                     elif kind == 'thrower':
                         new_enemies.append(Thrower(wx, GROUND_Y - Thrower.H))
+                        has_regular = True
                     elif kind == 'jumper':
                         new_enemies.append(Jumper(wx, GROUND_Y - Jumper.H))
+                        has_regular = True
                     elif kind == 'healer':
                         new_enemies.append(Healer(wx, GROUND_Y - Healer.H))
+                        has_regular = True
                     elif kind == 'swarm':
-                        new_enemies += self._build_swarm(wx)
+                        new_enemies += self._build_swarm(wx, camera_x)
                         self.swarm_active = True
                     elif kind == 'boss':
                         if self.level_num == 2:
@@ -127,6 +133,15 @@ class Level:
                         else:
                             new_enemies.append(Boss(wx, GROUND_Y - Boss.H))
                         self.boss_triggered = True
+
+                # Rear flank: spawn 1–2 enemies from behind for regular groups
+                if has_regular:
+                    flank_x = max(0, camera_x - random.randint(80, 200))
+                    new_enemies.append(Grunt(flank_x, GROUND_Y - Grunt.H))
+                    if self.level_num >= 2:
+                        flank_x2 = max(0, camera_x - random.randint(160, 300))
+                        flank_cls = Heavy if self.level_num == 2 else Jumper
+                        new_enemies.append(flank_cls(flank_x2, GROUND_Y - flank_cls.H))
             else:
                 remaining.append((trigger_x, spawn_list))
         self._pending = remaining
@@ -136,42 +151,68 @@ class Level:
         """Spawn a single grunt — used by TeacherBoss reinforcements."""
         return Grunt(wx, GROUND_Y - Grunt.H)
 
-    def _build_swarm(self, wx):
-        """Build the swarm wave appropriate for this level."""
+    def _build_swarm(self, wx, camera_x=0):
+        """Build the swarm wave — enemies from BOTH sides (left flank + right)."""
+        # Left-flank enemies spawn behind the camera and approach from the left
+        lx = max(0, camera_x - 220)
+
         if self.level_num == 1:
-            # Level 1: pack of grunts + a couple heavies
+            # 5 left-flank + 7 right = 12 enemies
             return [
-                Grunt(wx,       GROUND_Y - Grunt.H),
-                Grunt(wx + 55,  GROUND_Y - Grunt.H),
-                Heavy(wx + 110, GROUND_Y - Heavy.H),
-                Grunt(wx + 170, GROUND_Y - Grunt.H),
-                Grunt(wx + 225, GROUND_Y - Grunt.H),
-                Heavy(wx + 285, GROUND_Y - Heavy.H),
-                Grunt(wx + 345, GROUND_Y - Grunt.H),
+                # Left flank (behind player)
+                Grunt(lx,        GROUND_Y - Grunt.H),
+                Grunt(lx + 55,   GROUND_Y - Grunt.H),
+                Heavy(lx + 110,  GROUND_Y - Heavy.H),
+                Grunt(lx + 165,  GROUND_Y - Grunt.H),
+                Grunt(lx + 220,  GROUND_Y - Grunt.H),
+                # Right flank (ahead of player)
+                Grunt(wx,        GROUND_Y - Grunt.H),
+                Heavy(wx + 60,   GROUND_Y - Heavy.H),
+                Grunt(wx + 125,  GROUND_Y - Grunt.H),
+                Jumper(wx + 185, GROUND_Y - Jumper.H),
+                Grunt(wx + 250,  GROUND_Y - Grunt.H),
+                Heavy(wx + 315,  GROUND_Y - Heavy.H),
+                Grunt(wx + 380,  GROUND_Y - Grunt.H),
             ]
         elif self.level_num == 2:
-            # Level 2: heavier + jumper mix
+            # 6 left-flank + 9 right = 15 enemies — even more for L2!
             return [
-                Heavy(wx,       GROUND_Y - Heavy.H),
-                Jumper(wx + 60, GROUND_Y - Jumper.H),
-                Heavy(wx + 120, GROUND_Y - Heavy.H),
-                Grunt(wx + 180, GROUND_Y - Grunt.H),
-                Jumper(wx + 235, GROUND_Y - Jumper.H),
-                Heavy(wx + 295, GROUND_Y - Heavy.H),
-                Thrower(wx + 360, GROUND_Y - Thrower.H),
-                Grunt(wx + 420, GROUND_Y - Grunt.H),
+                # Left flank
+                Jumper(lx,        GROUND_Y - Jumper.H),
+                Heavy(lx + 65,    GROUND_Y - Heavy.H),
+                Grunt(lx + 130,   GROUND_Y - Grunt.H),
+                Healer(lx + 195,  GROUND_Y - Healer.H),
+                Jumper(lx + 260,  GROUND_Y - Jumper.H),
+                Heavy(lx + 325,   GROUND_Y - Heavy.H),
+                # Right flank
+                Heavy(wx,         GROUND_Y - Heavy.H),
+                Jumper(wx + 65,   GROUND_Y - Jumper.H),
+                Thrower(wx + 135, GROUND_Y - Thrower.H),
+                Heavy(wx + 205,   GROUND_Y - Heavy.H),
+                Grunt(wx + 270,   GROUND_Y - Grunt.H),
+                Jumper(wx + 335,  GROUND_Y - Jumper.H),
+                Heavy(wx + 400,   GROUND_Y - Heavy.H),
+                Thrower(wx + 465, GROUND_Y - Thrower.H),
+                Jumper(wx + 530,  GROUND_Y - Jumper.H),
             ]
         else:
-            # Level 3: jumpers + throwers, very chaotic
+            # 5 left-flank + 8 right = 13 enemies — chaotic mix
             return [
-                Jumper(wx,       GROUND_Y - Jumper.H),
-                Thrower(wx + 55, GROUND_Y - Thrower.H),
-                Jumper(wx + 110, GROUND_Y - Jumper.H),
-                Heavy(wx + 170,  GROUND_Y - Heavy.H),
-                Jumper(wx + 230, GROUND_Y - Jumper.H),
-                Thrower(wx + 290, GROUND_Y - Thrower.H),
-                Jumper(wx + 350, GROUND_Y - Jumper.H),
-                Heavy(wx + 410,  GROUND_Y - Heavy.H),
+                # Left flank
+                Thrower(lx,        GROUND_Y - Thrower.H),
+                Jumper(lx + 65,    GROUND_Y - Jumper.H),
+                Heavy(lx + 130,    GROUND_Y - Heavy.H),
+                Thrower(lx + 195,  GROUND_Y - Thrower.H),
+                Jumper(lx + 260,   GROUND_Y - Jumper.H),
+                # Right flank
+                Jumper(wx,         GROUND_Y - Jumper.H),
+                Thrower(wx + 60,   GROUND_Y - Thrower.H),
+                Heavy(wx + 125,    GROUND_Y - Heavy.H),
+                Jumper(wx + 190,   GROUND_Y - Jumper.H),
+                Thrower(wx + 255,  GROUND_Y - Thrower.H),
+                Heavy(wx + 320,    GROUND_Y - Heavy.H),
+                Jumper(wx + 385,   GROUND_Y - Jumper.H),
+                Grunt(wx + 450,    GROUND_Y - Grunt.H),
             ]
 
     # ------------------------------------------------------------------ draw

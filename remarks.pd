@@ -1,0 +1,74 @@
+
+fix these 2 bugs:
+1.when fought boss:
+AttributeError: 'Boss' object has no attribute '_die_timer'
+
+2.run with vercel bug:
+tried to deploy the github project to vercel, and got this error:
+Build Failed
+Found main.py but it does not export a top-level "app", "application", or "handler" variable.
+fix it so i'll have a way to load the game in browser
+3. The game shuold open in full screen and not a small window,
+
+Changes:
+-the game's name should be now:  "The NOYS".
+-make the game a bit more challenging and versatile.
+
+
+research:
+research the top games of this game's type, and suggest all the cool stuff we could borrow (that are possible to achieve as indie game).
+Write a spec and suggest 3 milestones.
+
+example ideas:
+different enemies atack differently: shoots stuff, jumb, shoot in angle (like artilery), heal themeselves etc.
+add platform-game stuff: pits that if you fall you die or get hurt, stuff to climb on etc.
+add healing potions along the way - bottles of milk, and smoked salmon pieces.
+bosses should be hard and have special attacks, e.g. long sword etc.
+each friendly character should have a different power with their mana - gal and nitay skills should be related to martial arts, like spinning kicks (differnt between them)
+lotem should be able to pee on the enemies.
+add another button, so character have 2 ways to attack (e.g. punch and kick, with tradeoff between them). 
+the buttons for attacks will be insert and delete, and the special attach (with mana) will be home button.
+add boxing gloves fo Nitay.
+Use for the main screen (entry) this image: images/entry_screen.png
+
+more ideas you can use if possible (nice to have, not that important):
+1. add a toothbrush boss.
+2. add a spiderman boss.
+3. a school teacher boss.
+4. a boss on roller blades - very fast
+3. Collect crystals. 100 coins gives a heart (can reserv up to 5 hearts). 
+   On rare occassions they can collect a brown dog (our dog) - worths 10 crystals and makes mana full.
+4. when fighting bosses starting boss 2: stuff falls from the sky and hurt the friendly character: 
+    school bags, clothes, broccoli.
+5. make one of the twins special attack - the other one comes and hit the enemy.
+6. Add next to "Game Over":
+"Mom said it's bedtime."
+"Go clean your room."
+"You have homework!"
+"no dessert for you!"
+if possible - write these in hebrew, so they can read it.
+
+5. Passing al bosses unlocks another character - Yael. sprite in images/Yael.png.
+
+
+Second phase:
+1. add sounds 
+2. make the game more beautiful - better sprites, backgrounds etc.
+3. add a button to stop a game and return to the entry screen.
+4. gameplay:
+    a. bosses are too easy and passive.
+    b. lava kills the minions - some should not be affected, the rest reduce less health,
+       or stop near the edge, being smart.
+    c. what about ones that throw stuff at you? what about stuff that falls from the sky,
+       at least while figting the bosses?
+    d. add enemy swarms - 1 on each level. that is many minions are coming together,
+       and characters should charge their srikes and use special power.
+    e. make the game a bit more challenging.
+    f. add music - one song for the level, and one for the boss fight.
+    g. coop mode doesn't work well - the second player moved with WASD,
+       but his attacks buttons triggers attacks of player 1. 
+       these should be his keys: WASD for movement,
+        tab, caps lock and left shift are analog to insert, delete and home for player 1.
+    h. make a different health bar for every player.
+    i. stuff still don't fall frm the sky, and no enemy throws stuff (only shoot directly).
+    j. add enemies that explode a moment after dying, reducing players' healths, so players need to move fast from those.

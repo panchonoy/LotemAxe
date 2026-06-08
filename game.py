@@ -1,11 +1,12 @@
 import sys
 import os
+import math
 import random
 import pygame
 
 from settings import *
 from player import Player, P1_KEYS, P2_KEYS
-from enemy import Boss, TeacherBoss, RollerBoss, Grunt, Heavy, Healer
+from enemy import Boss, TeacherBoss, RollerBoss, Grunt, Heavy, Healer, Thrower, Jumper
 from particles import spawn_hit, spawn_magic, spawn_death, spawn_pee, spawn_tornado, spawn_heal
 from level import Level
 from pickups import Pickup
@@ -378,21 +379,78 @@ class Game:
                                 break
 
         # --- Pit collision ---
+        # Decrement pit-avoidance cooldowns once per frame (outside pit loop)
+        for enemy in self.enemies:
+            if getattr(enemy, '_pit_avoid_cd', 0) > 0:
+                enemy._pit_avoid_cd -= 1
+
         for pit_x1, pit_x2 in self.level.pits:
-            # Players: fall through the gap; recover when deep enough
+            # Players: always bounce out — don't wait for hurt_timer to expire
             for player in self.players:
                 if player.dead or player.out_of_lives:
                     continue
                 pcx = int(player.x) + P_W // 2
-                if pit_x1 <= pcx <= pit_x2 and player.y > GROUND_Y + 50:
-                    if player.take_damage(30):
-                        player.vy = JUMP_VY * 0.85   # bounce back up
-                        # Push to nearest pit edge so they don't fall again
-                        if pcx - pit_x1 < pit_x2 - pcx:
-                            player.x = float(pit_x1 - P_W - 2)
-                        else:
-                            player.x = float(pit_x2 + 2)
-                        self._shake = max(self._shake, 5.0)
+                if pit_x1 <= pcx <= pit_x2 and player.y > GROUND_Y + 20:
+                    # Snap back above ground and eject to nearest pit edge
+                    player.vy = JUMP_VY * 0.85
+                    player.y  = float(GROUND_Y - P_H)
+                    if pcx - pit_x1 < pit_x2 - pcx:
+                        player.x = float(pit_x1 - P_W - 2)
+                    else:
+                        player.x = float(pit_x2 + 2)
+                    self._shake = max(self._shake, 5.0)
+                    player.take_damage(30)  # damage attempt (blocked by hurt_timer = intentional)
+
+            # --- Pit avoidance AI ---
+            for enemy in self.enemies:
+                if enemy.dead or not enemy.on_ground:
+                    continue
+                if isinstance(enemy, (Boss, TeacherBoss, RollerBoss)):
+                    continue
+                if getattr(enemy, '_pit_avoid_cd', 0) > 0:
+                    continue
+                ecx = enemy.rect.centerx
+                if not (pit_x1 <= ecx <= pit_x2):
+                    continue
+
+                closer_to_left = (ecx - pit_x1) < (pit_x2 - ecx)
+                toward_pit = 1 if closer_to_left else -1  # direction enemy was moving
+
+                if isinstance(enemy, Jumper):
+                    # Jumpers always jump over pits
+                    enemy.x  = float(pit_x1 - enemy.W) if closer_to_left else float(pit_x2 + 1)
+                    enemy.vy = JP_LEAP_VY
+                    enemy.on_ground = False
+                    enemy.vx = float(toward_pit) * max(abs(enemy.vx) if enemy.vx else 1.0,
+                                                        enemy.SPEED * 2.5)
+                    enemy._pit_avoid_cd = 50
+                elif isinstance(enemy, (Thrower, Healer)):
+                    # Always turn around
+                    enemy.x  = float(pit_x1 - enemy.W) if closer_to_left else float(pit_x2 + 1)
+                    enemy.vx = -float(toward_pit) * enemy.SPEED
+                    enemy.facing = 1 if enemy.vx > 0 else -1
+                    enemy._pit_avoid_cd = 70
+                elif isinstance(enemy, Heavy):
+                    pers = id(enemy) % 10
+                    if pers < 7:  # 70%: turn around
+                        enemy.x  = float(pit_x1 - enemy.W) if closer_to_left else float(pit_x2 + 1)
+                        enemy.vx = -float(toward_pit) * enemy.SPEED * 0.8
+                        enemy.facing = 1 if enemy.vx > 0 else -1
+                        enemy._pit_avoid_cd = 60
+                    # else 30%: fall in — no push-back, death check will handle it
+                else:  # Grunt
+                    pers = id(enemy) % 10
+                    if pers < 5:  # 50%: stop at edge
+                        enemy.x  = float(pit_x1 - enemy.W) if closer_to_left else float(pit_x2 + 1)
+                        enemy.vx = 0.0
+                        enemy._pit_avoid_cd = 55
+                    elif pers < 8:  # 30%: turn around
+                        enemy.x  = float(pit_x1 - enemy.W) if closer_to_left else float(pit_x2 + 1)
+                        enemy.vx = -float(toward_pit) * enemy.SPEED
+                        enemy.facing = 1 if enemy.vx > 0 else -1
+                        enemy._pit_avoid_cd = 65
+                    # else 20%: fall in
+
             # Enemies: die immediately when they walk into the pit
             for enemy in self.enemies:
                 if not enemy.dead and enemy.on_ground:
@@ -647,6 +705,7 @@ class Game:
 
     # ------------------------------------------------------------------ draw
     def _draw(self):
+        self.screen.fill((0, 0, 0))  # clear first — prevents ghost pixels in fullscreen
         shake_ox = random.randint(-int(self._shake), int(self._shake)) if self._shake > 1 else 0
         shake_oy = random.randint(-int(self._shake), int(self._shake)) if self._shake > 1 else 0
         cam_x = int(self.camera_x) + shake_ox
