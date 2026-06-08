@@ -12,7 +12,8 @@ P1_KEYS = {
     'right':  [pygame.K_RIGHT, pygame.K_d],
     'jump':   [pygame.K_UP,    pygame.K_w, pygame.K_SPACE],
     'attack': [pygame.K_INSERT],
-    'magic':  [pygame.K_DELETE],
+    'heavy':  [pygame.K_DELETE],
+    'magic':  [pygame.K_HOME],
 }
 
 P2_KEYS = {
@@ -20,7 +21,8 @@ P2_KEYS = {
     'right':  [pygame.K_l],
     'jump':   [pygame.K_i],
     'attack': [pygame.K_COMMA],
-    'magic':  [pygame.K_PERIOD],
+    'heavy':  [pygame.K_PERIOD],
+    'magic':  [pygame.K_SEMICOLON],
 }
 
 
@@ -29,12 +31,13 @@ _COLOR_PALETTES = {
     'red':   ((195, 65, 45),  (218, 90, 65),   (155, 28, 28)),
     'green': ((40, 160, 60),  (65, 195, 85),   (22, 105, 38)),
     'gold':  ((200, 165, 30), (225, 195, 60),  (155, 120, 15)),
+    'yael':  (YAEL_BODY,      YAEL_HEAD,       YAEL_CAPE),
 }
 
 
 class Player:
     def __init__(self, x, y, player_id=1, key_bindings=None, joystick=None,
-                 color=None, sprite_char=None):
+                 color=None, sprite_char=None, _char_name_override=None):
         self.player_id  = player_id
         self.key_bindings = key_bindings or P1_KEYS
         self.joystick   = joystick
@@ -46,12 +49,18 @@ class Player:
         self.facing = 1
         self.on_ground = False
 
-        # Sprite-sheet character ('asaf','lotem','gal','nitay') or None → draw as knight
+        # char_name = original arg always (for logic); sprite_char = None when sprites not ready
+        self.char_name   = _char_name_override or sprite_char or ''
         self.sprite_char = sprite_char if (sprite_char and sprites.is_ready()) else None
         self._anim_t = 0   # tick counter for sprite animation
 
-        self.hp       = P_HP
-        self.max_hp   = P_HP
+        # Nitay hits 15% harder with his fists
+        self._atk_dmg_mult = 1.15 if sprite_char == 'nitay' else 1.0
+        # Yael: faster but lower max HP
+        self._speed_mult   = YAEL_SPEED_MULT if self.char_name == 'yael' else 1.0
+
+        self.hp       = YAEL_HP if self.char_name == 'yael' else P_HP
+        self.max_hp   = YAEL_HP if self.char_name == 'yael' else P_HP
         self.magic    = P_MAGIC
         self.max_magic = P_MAGIC
 
@@ -71,11 +80,13 @@ class Player:
         self.current_atk_w    = P_ATK_W
         self.current_atk_stun = 0
         self.current_atk_dur  = P_ATK_DUR
+        self.is_heavy_atk     = False
 
         # Lives & respawn
         self.lives         = PLAYER_LIVES
         self.out_of_lives  = False
         self.respawn_timer = 0
+        self.crystals      = 0
 
         # Animation
         self._walk_t         = 0
@@ -87,6 +98,8 @@ class Player:
             color = 'blue' if player_id == 1 else 'red'
         if color in _COLOR_PALETTES:
             self._body_col, self._head_col, self._cape_col = _COLOR_PALETTES[color]
+        elif self.char_name == 'yael':
+            self._body_col, self._head_col, self._cape_col = YAEL_BODY, YAEL_HEAD, YAEL_CAPE
         else:
             self._body_col  = PLAYER_BODY
             self._head_col  = PLAYER_HEAD
@@ -107,7 +120,7 @@ class Player:
 
     # ------------------------------------------------------------------ input
     def _read_input(self, all_keys):
-        state = {a: False for a in ('left', 'right', 'jump', 'attack', 'magic')}
+        state = {a: False for a in ('left', 'right', 'jump', 'attack', 'heavy', 'magic')}
 
         # Keyboard
         for action, keys_list in self.key_bindings.items():
@@ -129,8 +142,8 @@ class Player:
                 nb = j.get_numbuttons()
                 if nb > 0 and j.get_button(0): state['jump']   = True  # A/Cross
                 if nb > 2 and j.get_button(2): state['attack'] = True  # X/Square
+                if nb > 1 and j.get_button(1): state['heavy']  = True  # B/Circle
                 if nb > 3 and j.get_button(3): state['magic']  = True  # Y/Triangle
-                if nb > 1 and j.get_button(1): state['attack'] = True  # B/Circle alt
             except Exception:
                 pass
 
@@ -147,12 +160,13 @@ class Player:
             return
 
         # Movement
+        speed = P_SPEED * self._speed_mult
         self.vx = 0.0
         if inp['left']:
-            self.vx = -P_SPEED
+            self.vx = -speed
             self.facing = -1
         if inp['right']:
-            self.vx = P_SPEED
+            self.vx = speed
             self.facing = 1
 
         self._walk_t = self._walk_t + 1 if self.vx != 0 else 0
@@ -164,9 +178,12 @@ class Player:
             self.on_ground = False
         self._prev_jump = jump_now
 
-        # Attack — fires combo
-        if inp['attack'] and self.atk_cd <= 0:
-            self._fire_attack()
+        # Only one attack type can fire per frame; light takes priority for combo chaining
+        if self.atk_cd <= 0:
+            if inp['attack']:
+                self._fire_attack()
+            elif inp['heavy']:
+                self._fire_heavy_attack()
 
         # Magic
         if inp['magic'] and self.magic_cd <= 0 and self.magic >= P_MAGIC_COST:
@@ -175,6 +192,7 @@ class Player:
             self.magic_just_used = True
 
     def _fire_attack(self):
+        self.is_heavy_atk = False
         # Advance or start combo chain
         if self.combo_window > 0:
             self.combo_count = min(self.combo_count + 1, 2)
@@ -184,27 +202,39 @@ class Player:
         self.combo_window = P_COMBO_WINDOW
 
         if self.combo_count == 2:                  # ---- FINISHER ----
-            self.current_atk_dmg  = P_COMBO3_DMG
+            self.current_atk_dmg  = int(P_COMBO3_DMG * self._atk_dmg_mult)
             self.current_atk_w    = P_COMBO3_W
             self.current_atk_stun = P_COMBO3_STUN
             self.current_atk_dur  = P_COMBO3_DUR
             self.atk_timer        = P_COMBO3_DUR
             self.atk_cd           = P_ATK_CD + 14
         elif self.combo_count == 1:                # ---- 2nd hit ----
-            self.current_atk_dmg  = P_COMBO2_DMG
+            self.current_atk_dmg  = int(P_COMBO2_DMG * self._atk_dmg_mult)
             self.current_atk_w    = P_ATK_W
             self.current_atk_stun = 0
             self.current_atk_dur  = P_ATK_DUR
             self.atk_timer        = P_ATK_DUR
             self.atk_cd           = P_ATK_CD
         else:                                      # ---- 1st hit ----
-            self.current_atk_dmg  = P_ATK_DMG
+            self.current_atk_dmg  = int(P_ATK_DMG * self._atk_dmg_mult)
             self.current_atk_w    = P_ATK_W
             self.current_atk_stun = 0
             self.current_atk_dur  = P_ATK_DUR
             self.atk_timer        = P_ATK_DUR
             self.atk_cd           = P_ATK_CD
 
+        self._hit_set.clear()
+
+    def _fire_heavy_attack(self):
+        self.is_heavy_atk     = True
+        self.combo_count      = 0
+        self.combo_window     = 0
+        self.current_atk_dmg  = int(P_HEAVY_DMG * self._atk_dmg_mult)
+        self.current_atk_w    = P_HEAVY_W
+        self.current_atk_stun = P_COMBO3_STUN
+        self.current_atk_dur  = P_HEAVY_DUR
+        self.atk_timer        = P_HEAVY_DUR
+        self.atk_cd           = P_HEAVY_CD
         self._hit_set.clear()
 
     # ------------------------------------------------------------------ damage
@@ -228,21 +258,24 @@ class Player:
             self.out_of_lives = True
 
     def _respawn(self, camera_x):
-        self.x          = float(max(camera_x + 120, 80))
-        self.y          = float(GROUND_Y - P_H)
-        self.vx         = 0.0
-        self.vy         = 0.0
-        self.hp         = P_HP
-        self.magic      = P_MAGIC
-        self.dead       = False
-        self.hurt_timer = INVINCIBILITY_DUR   # invincibility frames on respawn
-        self.combo_count = 0
-        sfx.play('respawn', 0.6)
+        self.x            = float(max(camera_x + 120, 80))
+        self.y            = float(GROUND_Y - P_H)
+        self.vx           = 0.0
+        self.vy           = 0.0
+        self.hp           = P_HP
+        self.magic        = P_MAGIC
+        self.dead         = False
+        self.hurt_timer   = INVINCIBILITY_DUR   # invincibility frames on respawn
+        self.atk_timer    = 0
+        self.atk_cd       = 0
+        self.combo_count  = 0
         self.combo_window = 0
+        self.is_heavy_atk = False
         self._hit_set.clear()
+        sfx.play('respawn', 0.6)
 
     # ------------------------------------------------------------------ update
-    def update(self, camera_x=0):
+    def update(self, camera_x=0, platforms=None, pits=None):
         if self.out_of_lives:
             return
 
@@ -258,13 +291,27 @@ class Player:
         self.x  += self.vx
         self.y  += self.vy
 
+        cx = self.x + P_W // 2
+        in_pit = pits and any(px1 <= cx <= px2 for px1, px2 in pits)
+
         ground_y = float(GROUND_Y - P_H)
-        if self.y >= ground_y:
+        if not in_pit and self.y >= ground_y:
             self.y = ground_y
             self.vy = 0.0
             self.on_ground = True
         else:
             self.on_ground = False
+            # Platform landing (only outside pits, only while falling)
+            if not in_pit and platforms and self.vy >= 0:
+                for wx, wy, pw in platforms:
+                    if wx <= cx <= wx + pw:
+                        prev_feet = (self.y + P_H) - self.vy
+                        curr_feet = self.y + P_H
+                        if prev_feet <= wy <= curr_feet:
+                            self.y = float(wy - P_H)
+                            self.vy = 0.0
+                            self.on_ground = True
+                            break
 
         self.x = max(0.0, min(self.x, float(WORLD_W - P_W)))
 
@@ -273,6 +320,7 @@ class Player:
             self.atk_timer -= 1
             if self.atk_timer == 0:
                 self._hit_set.clear()
+                self.is_heavy_atk = False
         if self.atk_cd     > 0: self.atk_cd     -= 1
         if self.magic_cd   > 0: self.magic_cd   -= 1
         if self.hurt_timer > 0: self.hurt_timer -= 1
@@ -359,8 +407,8 @@ class Player:
         glow_col = (180, 210, 255) if self.player_id == 1 else (255, 180, 180)
         pygame.draw.circle(surface, glow_col, (ex, cy + 1), 2)
 
-        # ---- Shield (off-hand, visible when not attacking) ----
-        if self.atk_timer <= 0:
+        # ---- Shield (off-hand, visible when not attacking; hidden for Nitay/Yael) ----
+        if self.atk_timer <= 0 and self.char_name not in ('nitay', 'yael'):
             if self.facing == 1:  # shield on left hand
                 pygame.draw.rect(surface, SHIELD_COL,  (sx - 8, sy + 32, 10, 18))
                 pygame.draw.rect(surface, (180, 30, 30), (sx - 7, sy + 37, 8,  8))
@@ -368,26 +416,57 @@ class Player:
                 pygame.draw.rect(surface, SHIELD_COL,  (sx + P_W - 2, sy + 32, 10, 18))
                 pygame.draw.rect(surface, (180, 30, 30), (sx + P_W - 1, sy + 37, 8,  8))
 
-        # ---- Sword ----
-        is_finisher = (self.combo_count == 2 and self.atk_timer > 0)
-        sword_col   = SWORD_COMBO if is_finisher else SWORD_COL
-
-        if self.atk_timer > 0:
-            sw = self.current_atk_w + 12
-            if self.facing == 1:
-                pygame.draw.rect(surface, sword_col, (sx + P_W - 8, sy + 24, sw, 9))
-                pygame.draw.rect(surface, GUARD_COL, (sx + P_W - 13, sy + 18, 10, 20))
-                if is_finisher:  # glow outline
-                    pygame.draw.rect(surface, WHITE, (sx + P_W - 8, sy + 24, sw, 9), 1)
+        # ---- Weapon — Nitay: boxing gloves; Yael: dual daggers; others: sword ----
+        if self.char_name == 'yael':
+            dag_col  = (210, 120, 200)
+            dag_dark = (160, 60, 140)
+            if self.atk_timer > 0:
+                if self.facing == 1:
+                    pygame.draw.rect(surface, dag_dark, (sx + P_W - 2, sy + 22, 4, 28))
+                    pygame.draw.polygon(surface, dag_col,
+                                        [(sx + P_W + 2, sy + 18), (sx + P_W + 28, sy + 28),
+                                         (sx + P_W + 2, sy + 36)])
+                else:
+                    pygame.draw.rect(surface, dag_dark, (sx - 2, sy + 22, 4, 28))
+                    pygame.draw.polygon(surface, dag_col,
+                                        [(sx + 2, sy + 18), (sx - 24, sy + 28),
+                                         (sx + 2, sy + 36)])
             else:
-                pygame.draw.rect(surface, sword_col, (sx - sw + 8, sy + 24, sw, 9))
-                pygame.draw.rect(surface, GUARD_COL, (sx + 3, sy + 18, 10, 20))
-                if is_finisher:
-                    pygame.draw.rect(surface, WHITE, (sx - sw + 8, sy + 24, sw, 9), 1)
+                ox = sx + P_W - 2 if self.facing == 1 else sx - 2
+                pygame.draw.rect(surface, dag_dark, (ox, sy + 26, 3, 24))
+        elif self.char_name == 'nitay':
+            glove_col  = (220, 30, 30)
+            glove_dark = (160, 15, 15)
+            if self.atk_timer > 0:
+                if self.facing == 1:
+                    pygame.draw.rect(surface, glove_dark, (sx + P_W - 5, sy + 26, 14, 18))
+                    pygame.draw.circle(surface, glove_col, (sx + P_W + 11, sy + 33), 10)
+                else:
+                    pygame.draw.rect(surface, glove_dark, (sx - 9, sy + 26, 14, 18))
+                    pygame.draw.circle(surface, glove_col, (sx - 11, sy + 33), 10)
+            else:
+                # Resting fists at sides
+                pygame.draw.rect(surface, glove_dark, (sx + P_W - 4, sy + 38, 10, 10))
+                pygame.draw.rect(surface, glove_dark, (sx - 6,       sy + 38, 10, 10))
         else:
-            # Idle sword at hip
-            ox = sx + P_W - 3 if self.facing == 1 else sx - 3
-            pygame.draw.rect(surface, SWORD_COL, (ox, sy + 26, 5, 34))
+            is_finisher = (self.combo_count == 2 and self.atk_timer > 0)
+            sword_col   = (255, 100, 30) if (self.is_heavy_atk and self.atk_timer > 0) else (SWORD_COMBO if is_finisher else SWORD_COL)
+
+            if self.atk_timer > 0:
+                sw = self.current_atk_w + 12
+                if self.facing == 1:
+                    pygame.draw.rect(surface, sword_col, (sx + P_W - 8, sy + 24, sw, 9))
+                    pygame.draw.rect(surface, GUARD_COL, (sx + P_W - 13, sy + 18, 10, 20))
+                    if is_finisher:
+                        pygame.draw.rect(surface, WHITE, (sx + P_W - 8, sy + 24, sw, 9), 1)
+                else:
+                    pygame.draw.rect(surface, sword_col, (sx - sw + 8, sy + 24, sw, 9))
+                    pygame.draw.rect(surface, GUARD_COL, (sx + 3, sy + 18, 10, 20))
+                    if is_finisher:
+                        pygame.draw.rect(surface, WHITE, (sx - sw + 8, sy + 24, sw, 9), 1)
+            else:
+                ox = sx + P_W - 3 if self.facing == 1 else sx - 3
+                pygame.draw.rect(surface, SWORD_COL, (ox, sy + 26, 5, 34))
 
         # ---- Combo pip indicators (small dots above head) ----
         if self.combo_window > 0:
@@ -429,12 +508,17 @@ class Player:
         surface.blit(surf, (blit_x, blit_y))
 
     def _draw_hud_extras(self, surface, sx, sy):
-        """Combo pips — drawn on top of the sprite."""
+        """Combo pips + Nitay glove overlay — drawn on top of the sprite."""
         if self.combo_window > 0:
             for i in range(3):
                 pip_col = SWORD_COMBO if i < self.combo_count + 1 else (60, 60, 60)
                 pygame.draw.circle(surface, pip_col,
                                    (sx + 10 + i * 10, sy - 8), 4)
+        if self.char_name == 'nitay' and self.atk_timer > 0:
+            glove_col = (220, 30, 30)
+            fist_x = (sx + int(P_W * 1.0)) if self.facing == 1 else (sx - int(P_W * 0.2))
+            fist_y = sy + int(P_H * 0.58)
+            pygame.draw.circle(surface, glove_col, (fist_x, fist_y), 9)
 
     # ------------------------------------------------------------------ label
     def draw_respawn_countdown(self, surface, cam_x):

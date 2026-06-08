@@ -44,17 +44,19 @@ def _draw_player_panel(surface, player, left, fonts):
     border_col = (60, 80, 140) if player.player_id == 1 else (140, 60, 60)
     pygame.draw.rect(surface, border_col, (px, py, pw, ph), 2)
 
-    # Label — show sprite char name or "KNIGHT" for drawn characters
-    char_name = (player.sprite_char.upper()
-                 if getattr(player, 'sprite_char', None) else 'KNIGHT')
+    # Label — use char_name (always set) for known chars, else KNIGHT
+    _named_chars = {'asaf', 'lotem', 'gal', 'nitay', 'yael'}
+    _cn = getattr(player, 'char_name', '')
+    char_name = _cn.upper() if _cn in _named_chars else 'KNIGHT'
     name = f'P{player.player_id} — {char_name}'
     lbl = fonts['xs'].render(name, True, border_col)
     surface.blit(lbl, (px + 6, py + 4))
 
-    # Lives (heart icons)
-    for i in range(PLAYER_LIVES):
+    # Lives (heart icons — show up to PLAYER_LIVES_MAX = 5)
+    max_show = max(PLAYER_LIVES, player.lives)
+    for i in range(max_show):
         col = LIFE_COL if i < player.lives else (50, 20, 20)
-        hx = px + pw - 14 - i * 18
+        hx = px + pw - 14 - i * 16
         hy = py + 5
         _draw_heart(surface, hx, hy, col)
 
@@ -65,6 +67,10 @@ def _draw_player_panel(surface, player, left, fonts):
     # Magic bar
     _bar(surface, px + 6, py + 40, pw - 12, 15,
          player.magic, player.max_magic, MAGIC_COL, MAGIC_BG, 'MP', fonts['xs'])
+
+    # Crystal counter — shown below the panel so it never overlaps
+    gem_surf = fonts['xs'].render(f'◆ {player.crystals} / 100', True, (80, 220, 255))
+    surface.blit(gem_surf, (px + 6, py + ph + 2))
 
 
 def _draw_heart(surface, x, y, col):
@@ -127,7 +133,7 @@ def _draw_boss_bar(surface, enemies, fonts):
 
 def _draw_controls_hint(surface, fonts):
     hint = fonts['xs'].render(
-        'P1: Arrows/WASD Move · Space Jump · Ins Attack · Del Magic      '
-        'P2: J/L Move · I Jump · , Attack · . Magic',
+        'P1: Arrows/WASD Move · Space Jump · Ins Attack · Del Heavy · Home Magic      '
+        'P2: J/L Move · I Jump · , Attack · . Heavy · ; Magic',
         True, (130, 140, 160))
     surface.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, SCREEN_H - 16))

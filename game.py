@@ -5,9 +5,10 @@ import pygame
 
 from settings import *
 from player import Player, P1_KEYS, P2_KEYS
-from enemy import Boss
-from particles import spawn_hit, spawn_magic, spawn_death
+from enemy import Boss, TeacherBoss, RollerBoss, Grunt
+from particles import spawn_hit, spawn_magic, spawn_death, spawn_pee, spawn_tornado, spawn_heal
 from level import Level
+from pickups import Pickup
 import ui
 import sfx
 import sprites
@@ -20,7 +21,20 @@ GAME_OVER    = 'game_over'
 VICTORY      = 'victory'
 CREDITS      = 'credits'
 
-HISCORE_FILE = os.path.join(os.path.dirname(__file__), 'highscore.txt')
+HISCORE_FILE  = os.path.join(os.path.dirname(__file__), 'highscore.txt')
+YAEL_FILE     = os.path.join(os.path.dirname(__file__), YAEL_UNLOCK_FILE)
+
+
+def _is_yael_unlocked():
+    return os.path.exists(YAEL_FILE)
+
+
+def _unlock_yael():
+    try:
+        with open(YAEL_FILE, 'w') as f:
+            f.write('1')
+    except Exception:
+        pass
 
 
 def _load_hiscore():
@@ -62,11 +76,13 @@ class Game:
 
     # ------------------------------------------------------------------ setup
     def _init_fonts(self):
-        self.font_title = pygame.font.SysFont('Arial', 76, bold=True)
-        self.font_big   = pygame.font.SysFont('Arial', 58, bold=True)
-        self.font_med   = pygame.font.SysFont('Arial', 30, bold=True)
-        self.font_small = pygame.font.SysFont('Arial', 19)
-        self.font_hint  = pygame.font.SysFont('Arial', 14)
+        self.font_title    = pygame.font.SysFont('Arial', 76, bold=True)
+        self.font_big      = pygame.font.SysFont('Arial', 58, bold=True)
+        self.font_med      = pygame.font.SysFont('Arial', 30, bold=True)
+        self.font_small    = pygame.font.SysFont('Arial', 19)
+        self.font_hint     = pygame.font.SysFont('Arial', 14)
+        self.font_float    = pygame.font.SysFont('Arial', 16, bold=True)
+        self.font_gameover = pygame.font.SysFont('Arial', 28, bold=True)
 
     def _new_game(self, level_num=1):
         self.current_level = level_num
@@ -76,12 +92,19 @@ class Game:
         c2 = getattr(self, 'p2_color', 'lotem' if sprites.is_ready() else 'red')
 
         _SPRITE_CHARS = {'asaf', 'lotem', 'gal', 'nitay'}
+        _NAMED_CHARS  = {'yael'}   # have char_name but no sprite sheet
 
         def _make_player(x, pid, keys, color, joy=None):
             if color in _SPRITE_CHARS:
                 return Player(x, GROUND_Y - P_H, player_id=pid,
                               key_bindings=keys, joystick=joy,
                               sprite_char=color)
+            if color in _NAMED_CHARS:
+                # Named chars have logic (stats/weapons) but no sprite sheet
+                return Player(x, GROUND_Y - P_H, player_id=pid,
+                              key_bindings=keys, joystick=joy,
+                              color=color, sprite_char=None,
+                              _char_name_override=color)
             return Player(x, GROUND_Y - P_H, player_id=pid,
                           key_bindings=keys, joystick=joy, color=color)
 
@@ -95,14 +118,31 @@ class Game:
         self.score     = 0
         self.level     = Level(level_num)
 
-        self._hit_stop     = 0
-        self._shake        = 0.0
-        self._magic_flash  = 0
-        self._victory_wait = 0
+        if level_num == 1:
+            pickup_data = PICKUPS_L1
+        elif level_num == 2:
+            pickup_data = PICKUPS_L2
+        else:
+            pickup_data = PICKUPS_L3
+        self.pickups = [Pickup(wx, kind) for wx, kind in pickup_data]
+        self._float_texts = []   # [(screen_x, screen_y, text, color, frames_left)]
+
+        self._hit_stop          = 0
+        self._shake             = 0.0
+        self._magic_flash       = 0
+        self._victory_wait      = 0
+        self._gameover_line_idx = random.randint(0, len(self._GAMEOVER_LINES) - 1)
+        self._twin_assists      = []  # [[world_x, direction, frames_left, hit_set]]
+        self._lava_timers       = {}  # {player_index: frames_in_lava}
+
+        # Falling hazards (active during boss fights from level 2+)
+        self._hazards   = []  # [[world_x, y, vy, warn_t, type_idx]]
+        self._hazard_cd = random.randint(FALL_HAZARD_MIN_CD, FALL_HAZARD_MAX_CD)
 
     # ----------------------------------------------------------- color select
     # sprite chars use the sprite sheet; the rest are knight color palettes
-    _COLOR_OPTIONS = ['asaf', 'lotem', 'gal', 'nitay', 'blue', 'red', 'green', 'gold']
+    _COLOR_OPTIONS_BASE = ['asaf', 'lotem', 'gal', 'nitay', 'blue', 'red', 'green', 'gold']
+    _COLOR_OPTIONS_YAEL = ['asaf', 'lotem', 'gal', 'nitay', 'yael', 'blue', 'red', 'green', 'gold']
     _COLOR_MAP = {
         'blue':  ((45, 85, 195),  (65, 108, 218),  (28, 50, 155)),
         'red':   ((195, 65, 45),  (218, 90, 65),   (155, 28, 28)),
@@ -113,7 +153,12 @@ class Game:
         'lotem': ((220, 175, 130),(245, 200, 160),  (180, 140, 100)),
         'gal':   ((40, 35, 55),   (60, 55, 75),    (25, 20, 38)),
         'nitay': ((35, 30, 50),   (55, 50, 70),    (20, 15, 33)),
+        'yael':  (YAEL_BODY,      YAEL_HEAD,       YAEL_CAPE),
     }
+
+    @property
+    def _COLOR_OPTIONS(self):
+        return self._COLOR_OPTIONS_YAEL if _is_yael_unlocked() else self._COLOR_OPTIONS_BASE
 
     def _handle_color_select(self, key):
         opts = self._COLOR_OPTIONS
@@ -175,7 +220,8 @@ class Game:
 
                 elif self.state == VICTORY:
                     if event.key == pygame.K_RETURN:
-                        self._new_game(level_num=2)
+                        next_level = self.current_level + 1
+                        self._new_game(level_num=next_level)
                         self.state = PLAYING
                 elif self.state == GAME_OVER:
                     if event.key == pygame.K_RETURN:
@@ -193,7 +239,8 @@ class Game:
                     self._new_game()
                     self.state = PLAYING
                 elif self.state == VICTORY and event.button == 9:
-                    self._new_game(level_num=2)
+                    next_level = self.current_level + 1
+                    self._new_game(level_num=next_level)
                     self.state = PLAYING
                 elif self.state in (GAME_OVER, CREDITS) and event.button == 9:
                     self._new_game()
@@ -208,9 +255,11 @@ class Game:
         all_keys = pygame.key.get_pressed()
 
         # --- Player input ---
+        platforms = self.level.platforms
+        pits      = self.level.pits
         for player in self.players:
             player.handle_input(all_keys)
-            player.update(int(self.camera_x))
+            player.update(int(self.camera_x), platforms, pits)
             if player.magic_just_used:
                 player.magic_just_used = False
                 self._do_magic(player)
@@ -276,15 +325,198 @@ class Game:
 
         self.enemies = [e for e in self.enemies if not e.dead or e._die_timer > 0]
 
+        # --- Projectile hits (Thrower + TeacherBoss chalk) ---
+        for enemy in self.enemies:
+            if hasattr(enemy, 'pending_hits'):
+                for player, dmg in enemy.pending_hits:
+                    if player.take_damage(dmg):
+                        self._shake = max(self._shake, 4.0)
+                        sfx.play('hit', 0.5)
+
+        # --- TeacherBoss: reinforcement spawns + SILENCE! float text ---
+        for enemy in self.enemies:
+            if hasattr(enemy, 'pending_spawns') and enemy.pending_spawns:
+                for gx in enemy.pending_spawns:
+                    gx = max(50, min(int(gx), WORLD_W - 50))
+                    self.enemies.append(self.level.spawn_grunt(gx))
+                enemy.pending_spawns = []
+            if hasattr(enemy, 'swing_text') and enemy.swing_text:
+                scr_x = enemy.rect.centerx - int(self.camera_x)
+                self._float_texts.append([scr_x, enemy.rect.top - 10, enemy.swing_text,
+                                          (255, 80, 80), 55])
+                enemy.swing_text = ''
+
+        # --- Enemy platform correction ---
+        if platforms:
+            for enemy in self.enemies:
+                if not enemy.dead and not enemy.on_ground and enemy.vy >= 0:
+                    ecx = enemy.x + enemy.W // 2
+                    for wx, wy, pw in platforms:
+                        if wx <= ecx <= wx + pw:
+                            prev_feet = (enemy.y + enemy.H) - enemy.vy
+                            curr_feet = enemy.y + enemy.H
+                            if prev_feet <= wy <= curr_feet:
+                                enemy.y = float(wy - enemy.H)
+                                enemy.vy = 0.0
+                                enemy.on_ground = True
+                                break
+
+        # --- Pit collision ---
+        for pit_x1, pit_x2 in self.level.pits:
+            # Players: fall through the gap; recover when deep enough
+            for player in self.players:
+                if player.dead or player.out_of_lives:
+                    continue
+                pcx = int(player.x) + P_W // 2
+                if pit_x1 <= pcx <= pit_x2 and player.y > GROUND_Y + 50:
+                    if player.take_damage(30):
+                        player.vy = JUMP_VY * 0.85   # bounce back up
+                        # Push to nearest pit edge so they don't fall again
+                        if pcx - pit_x1 < pit_x2 - pcx:
+                            player.x = float(pit_x1 - P_W - 2)
+                        else:
+                            player.x = float(pit_x2 + 2)
+                        self._shake = max(self._shake, 5.0)
+            # Enemies: die immediately when they walk into the pit
+            for enemy in self.enemies:
+                if not enemy.dead and enemy.on_ground:
+                    ecx = enemy.rect.centerx
+                    if pit_x1 <= ecx <= pit_x2:
+                        pit_cx = (pit_x1 + pit_x2) // 2
+                        enemy.dead       = True
+                        enemy._die_timer = 36
+                        enemy._die_vx    = 2.5 if pit_cx > ecx else -2.5
+                        enemy._die_vy    = 3.0   # fall downward
+                        self.score += enemy.score_value
+                        scr_x = ecx - int(self.camera_x)
+                        spawn_death(self.particles, scr_x, enemy.rect.centery,
+                                    enemy.death_color)
+
+        # --- Lava damage ---
+        for lx1, lx2 in self.level.lava:
+            for i, player in enumerate(self.players):
+                if player.dead or player.out_of_lives:
+                    continue
+                pcx = int(player.x) + P_W // 2
+                if lx1 <= pcx <= lx2 and player.on_ground:
+                    self._lava_timers[i] = self._lava_timers.get(i, 0) + 1
+                    if self._lava_timers[i] >= LAVA_INTERVAL:
+                        self._lava_timers[i] = 0
+                        player.hp = max(0, player.hp - LAVA_DMG)
+                        self._shake = max(self._shake, 2.0)
+                        if player.hp == 0 and not player.dead:
+                            player._die()
+                else:
+                    self._lava_timers[i] = 0
+            for enemy in self.enemies:
+                if not enemy.dead and enemy.on_ground:
+                    if lx1 <= enemy.rect.centerx <= lx2:
+                        enemy.hp = max(0, enemy.hp - 1)
+                        if enemy.hp == 0:
+                            enemy.dead       = True
+                            enemy._die_timer = 36
+                            enemy._die_vx    = 0.0
+                            enemy._die_vy    = -4.0
+                            self.score += enemy.score_value
+                            scr_x = enemy.rect.centerx - int(self.camera_x)
+                            spawn_death(self.particles, scr_x, enemy.rect.centery,
+                                        enemy.death_color)
+
+        # --- Healer ally healing ---
+        for enemy in self.enemies:
+            if not enemy.dead and hasattr(enemy, '_heal_cd') and enemy._heal_cd == 0:
+                for target in self.enemies:
+                    if (target is not enemy and not target.dead and
+                            target.hp < target.max_hp and
+                            abs(target.rect.centerx - enemy.rect.centerx) < 300):
+                        target.hp = min(target.max_hp, target.hp + HL_HEAL_AMT)
+                        enemy._heal_cd = HL_HEAL_CD
+                        mid_x = (target.rect.centerx + enemy.rect.centerx) // 2 - int(self.camera_x)
+                        mid_y = min(target.rect.centery, enemy.rect.centery)
+                        spawn_heal(self.particles, mid_x, mid_y)
+                        break
+
+        # --- Twin assists (Nitay magic) ---
+        for ta in self._twin_assists:
+            ta[0] += P_TWIN_SPEED * ta[1]
+            ta[2] -= 1
+            ta_rect = pygame.Rect(int(ta[0]) - 20, GROUND_Y - P_H - 5, 40, P_H + 10)
+            for enemy in self.enemies:
+                if enemy not in ta[3] and not enemy.dead:
+                    if ta_rect.colliderect(enemy.rect):
+                        ta[3].add(enemy)
+                        if enemy.take_damage(P_TWIN_DMG, int(ta[1]), 30):
+                            scr_x = enemy.rect.centerx - int(self.camera_x)
+                            spawn_hit(self.particles, scr_x, enemy.rect.centery)
+                            if enemy.dead:
+                                self.score += enemy.score_value
+                                spawn_death(self.particles, scr_x, enemy.rect.centery,
+                                            enemy.death_color)
+        self._twin_assists = [ta for ta in self._twin_assists if ta[2] > 0]
+        self.enemies = [e for e in self.enemies if not e.dead or e._die_timer > 0]
+
+        # --- Pickups ---
+        for pickup in self.pickups:
+            for player in self.players:
+                if player.dead or player.out_of_lives:
+                    continue
+                label = pickup.try_collect(player)
+                if label:
+                    scr_x = int(player.x) - int(self.camera_x) + 19
+                    scr_y = int(player.y) - 20
+                    col   = (80, 220, 255) if 'Crystal' in label else (255, 220, 80) if 'Woof' in label else (80, 220, 80)
+                    self._float_texts.append([scr_x, scr_y, label, col, 50])
+
+        # --- Falling hazards (level 2+ during boss fight) ---
+        if self.current_level >= 2 and self.level.boss_triggered:
+            self._hazard_cd -= 1
+            if self._hazard_cd <= 0:
+                self._hazard_cd = random.randint(FALL_HAZARD_MIN_CD, FALL_HAZARD_MAX_CD)
+                # Spawn above a living player's area
+                living = [p for p in self.players if not p.out_of_lives and not p.dead]
+                if living:
+                    tx = random.choice(living)
+                    wx = int(tx.x) + random.randint(-120, 120)
+                    wx = max(50, min(wx, WORLD_W - 50))
+                    self._hazards.append([wx, -30.0, 0.0,
+                                          FALL_HAZARD_WARN, random.randint(0, 2)])
+
+            hit_players = set()
+            for hz in self._hazards:
+                hz[3] -= 1   # warn_t countdown
+                if hz[3] <= 0:
+                    hz[2] += FALL_HAZARD_SPEED   # falling vy (stored as distance per frame)
+                    hz[1] += hz[2]               # y increases downward (screen coords)
+                    if hz[1] >= GROUND_Y - 20:
+                        # Impact!
+                        hz_scr_x = hz[0] - int(self.camera_x)
+                        for player in self.players:
+                            if player.dead or player.out_of_lives:
+                                continue
+                            if abs(player.x + P_W // 2 - hz[0]) < 30:
+                                if player not in hit_players:
+                                    hit_players.add(player)
+                                    if player.take_damage(FALL_HAZARD_DMG):
+                                        self._shake = max(self._shake, 4.0)
+                        hz[1] = GROUND_Y + 100   # mark for removal
+            self._hazards = [hz for hz in self._hazards if hz[1] < GROUND_Y + 80]
+
         # --- Particles ---
         self.particles = [p for p in self.particles if p.update()]
 
         # --- Decay ---
         self._shake       = max(0.0, self._shake - 0.4)
         if self._magic_flash > 0: self._magic_flash -= 1
+        for ft in self._float_texts:
+            ft[1] -= 1   # float upward
+            ft[4] -= 1   # tick down lifetime
+        self._float_texts = [ft for ft in self._float_texts if ft[4] > 0]
 
         # --- Win/Lose ---
-        boss_dead = self.level.boss_triggered and not any(isinstance(e, Boss) for e in self.enemies if not e.dead)
+        boss_dead = self.level.boss_triggered and not any(
+            isinstance(e, (Boss, TeacherBoss, RollerBoss)) and not e.dead
+            for e in self.enemies
+        )
         if boss_dead:
             self._victory_wait += 1
             if self._victory_wait > 100:
@@ -292,8 +524,11 @@ class Game:
                     self.hiscore = self.score
                     _save_hiscore(self.hiscore)
                 if self.current_level == 1:
-                    self.state = VICTORY   # brief victory then → level 2
+                    self.state = VICTORY          # → level 2
+                elif self.current_level == 2:
+                    self.state = VICTORY          # → level 3
                 else:
+                    _unlock_yael()               # beat all 3 levels!
                     self.state = CREDITS
 
         all_out = all(p.out_of_lives for p in self.players)
@@ -302,24 +537,74 @@ class Game:
 
     # ------------------------------------------------------------------ magic
     def _do_magic(self, caster):
+        char = getattr(caster, 'char_name', '')
+        if   char == 'lotem': self._magic_lotem(caster)
+        elif char == 'gal':   self._magic_gal(caster)
+        elif char == 'nitay': self._magic_nitay(caster)
+        else:                 self._magic_asaf(caster)
+        self._shake       = 12.0
+        self._magic_flash = 18
+        sfx.play('magic', 0.8)
+
+    def _magic_asaf(self, caster):
+        """Power Slam — wide shockwave in all directions."""
         cx = int(caster.x) + P_W // 2
         cy = int(caster.y) + P_H // 2
         for enemy in self.enemies:
-            dx = abs(enemy.rect.centerx - cx)
-            if dx < P_MAGIC_RAD:
+            if abs(enemy.rect.centerx - cx) < P_MAGIC_RAD_ASAF:
                 kb_dir = 1 if enemy.rect.centerx >= cx else -1
-                if enemy.take_damage(P_MAGIC_DMG, kb_dir, 0):
+                if enemy.take_damage(P_MAGIC_DMG_ASAF, kb_dir, 0):
                     if enemy.dead:
                         self.score += enemy.score_value
                         scr_x = enemy.rect.centerx - int(self.camera_x)
                         spawn_death(self.particles, scr_x, enemy.rect.centery, enemy.death_color)
         self.enemies = [e for e in self.enemies if not e.dead or e._die_timer > 0]
+        spawn_magic(self.particles, cx - int(self.camera_x), cy, P_MAGIC_RAD_ASAF)
 
-        scr_cx = cx - int(self.camera_x)
-        spawn_magic(self.particles, scr_cx, cy, P_MAGIC_RAD)
-        self._shake       = 12.0
-        self._magic_flash = 18
-        sfx.play('magic', 0.8)
+    def _magic_lotem(self, caster):
+        """Pee Stream — forward cone that stuns enemies."""
+        cx = int(caster.x) + P_W // 2
+        cy = int(caster.y) + P_H // 2
+        for enemy in self.enemies:
+            dx = enemy.rect.centerx - cx
+            in_front = (caster.facing == 1 and dx > 0) or (caster.facing == -1 and dx < 0)
+            if in_front and abs(dx) <= P_PEE_RANGE and abs(enemy.rect.centery - cy) < 45:
+                if enemy.take_damage(P_PEE_DMG, caster.facing, P_PEE_STUN):
+                    if enemy.dead:
+                        self.score += enemy.score_value
+                        scr_x = enemy.rect.centerx - int(self.camera_x)
+                        spawn_death(self.particles, scr_x, enemy.rect.centery, enemy.death_color)
+        self.enemies = [e for e in self.enemies if not e.dead or e._die_timer > 0]
+        spawn_pee(self.particles, cx - int(self.camera_x), cy, caster.facing)
+
+    def _magic_gal(self, caster):
+        """Tornado Kick — spin-launches nearby enemies upward."""
+        cx = int(caster.x) + P_W // 2
+        cy = int(caster.y) + P_H // 2
+        for enemy in self.enemies:
+            if abs(enemy.rect.centerx - cx) < P_TORNADO_RAD:
+                kb_dir = 1 if enemy.rect.centerx >= cx else -1
+                if enemy.take_damage(P_TORNADO_DMG, kb_dir, 40):
+                    enemy.vy = P_TORNADO_LAUNCH_VY
+                    if enemy.dead:
+                        self.score += enemy.score_value
+                        scr_x = enemy.rect.centerx - int(self.camera_x)
+                        spawn_death(self.particles, scr_x, enemy.rect.centery, enemy.death_color)
+        self.enemies = [e for e in self.enemies if not e.dead or e._die_timer > 0]
+        spawn_tornado(self.particles, cx - int(self.camera_x), cy)
+
+    def _magic_nitay(self, caster):
+        """Twin Assist — ghost Gal flies across the screen dealing damage."""
+        direction = float(caster.facing)
+        if caster.facing == 1:
+            start_wx = float(int(self.camera_x) - 60)
+        else:
+            start_wx = float(int(self.camera_x) + SCREEN_W + 60)
+        self._twin_assists.append([start_wx, direction, 80, set()])
+        spawn_magic(self.particles,
+                    int(caster.x) + P_W // 2 - int(self.camera_x),
+                    int(caster.y) + P_H // 2,
+                    60)
 
     # ------------------------------------------------------------------ draw
     def _draw(self):
@@ -336,21 +621,72 @@ class Game:
         else:
             self._draw_world(cam_x)
             if self.state == GAME_OVER:
-                self._draw_overlay('GAME OVER', (210, 45, 45), 'Press ENTER to return to Menu')
+                self._draw_game_over()
             elif self.state == VICTORY:
                 hi = '  NEW HI-SCORE!' if self.score >= self.hiscore else f'  Hi: {self.hiscore:,}'
+                next_lv = self.current_level + 1
                 self._draw_overlay('VICTORY!', SCORE_COL,
-                                   f'Score: {self.score:,}{hi}   — Press ENTER for Level 2!')
+                                   f'Score: {self.score:,}{hi}   — Press ENTER for Level {next_lv}!')
         pygame.display.flip()
 
     def _draw_world(self, cam_x):
         self.level.draw_background(self.screen, int(self.camera_x))
+
+        for pickup in self.pickups:
+            pickup.draw(self.screen, cam_x)
 
         for p in self.particles:
             p.draw(self.screen, 0)   # particles already in screen-space
 
         for enemy in self.enemies:
             enemy.draw(self.screen, cam_x)
+
+        # Twin assists (Nitay magic) — ghost Gal sprinting across
+        for ta in self._twin_assists:
+            scr_x = int(ta[0]) - cam_x
+            if -40 <= scr_x <= SCREEN_W + 40:
+                gal_body = (40, 35, 55)
+                gal_head = (60, 55, 75)
+                pygame.draw.rect(self.screen, gal_body, (scr_x - 12, GROUND_Y - P_H, 24, P_H))
+                pygame.draw.circle(self.screen, gal_head, (scr_x, GROUND_Y - P_H + 12), 10)
+                for i in range(1, 5):
+                    tx = scr_x - int(ta[1]) * i * 10
+                    if 0 <= tx <= SCREEN_W:
+                        fade = max(0, 110 - i * 25)
+                        trail = pygame.Surface((20, P_H - 10), pygame.SRCALPHA)
+                        trail.fill((gal_body[0], gal_body[1], gal_body[2], fade))
+                        self.screen.blit(trail, (tx - 10, GROUND_Y - P_H + 5))
+
+        # Falling hazards
+        for hz in self._hazards:
+            sx = hz[0] - cam_x
+            if not (-40 <= sx <= SCREEN_W + 40):
+                continue
+            ht = hz[4]  # type: 0=bag, 1=broccoli, 2=clothing
+            if hz[3] > 0:
+                # Shadow warning on ground
+                warn_alpha = int(180 * (1 - hz[3] / FALL_HAZARD_WARN))
+                shadow_w   = max(8, int(40 * (1 - hz[3] / FALL_HAZARD_WARN)))
+                shad = pygame.Surface((shadow_w, 8), pygame.SRCALPHA)
+                shad.fill((0, 0, 0, warn_alpha))
+                self.screen.blit(shad, (sx - shadow_w // 2, GROUND_Y - 4))
+            else:
+                sy = int(hz[1])
+                if ht == 0:   # school bag (dark rectangle with straps)
+                    pygame.draw.rect(self.screen, (40, 35, 80),  (sx - 14, sy - 20, 28, 22))
+                    pygame.draw.rect(self.screen, (60, 55, 100), (sx - 10, sy - 22, 20, 4))
+                    pygame.draw.line(self.screen, (40, 35, 80), (sx - 8, sy - 20), (sx - 14, sy + 2), 3)
+                    pygame.draw.line(self.screen, (40, 35, 80), (sx + 8, sy - 20), (sx + 14, sy + 2), 3)
+                elif ht == 1: # broccoli
+                    pygame.draw.rect(self.screen, (60, 140, 30), (sx - 4, sy - 10, 8, 16))
+                    pygame.draw.circle(self.screen, (40, 120, 20), (sx, sy - 14), 12)
+                    pygame.draw.circle(self.screen, (60, 150, 35), (sx - 6, sy - 12), 7)
+                    pygame.draw.circle(self.screen, (60, 150, 35), (sx + 6, sy - 12), 7)
+                else:         # clothing (floppy shirt)
+                    pts = [(sx - 14, sy - 14), (sx + 14, sy - 14),
+                           (sx + 18, sy + 6),  (sx - 18, sy + 6)]
+                    pygame.draw.polygon(self.screen, (180, 80, 80), pts)
+                    pygame.draw.rect(self.screen, (200, 100, 100), (sx - 12, sy - 14, 24, 5))
 
         for player in self.players:
             player.draw(self.screen, cam_x)
@@ -364,15 +700,38 @@ class Game:
 
         ui.draw_hud(self.screen, self.players, self.score, self.enemies)
 
+        for fx, fy, text, col, life in self._float_texts:
+            alpha = max(0, int(255 * life / 50))
+            surf  = self.font_float.render(text, True, col)
+            surf.set_alpha(alpha)
+            self.screen.blit(surf, (fx - surf.get_width() // 2, fy))
+
     def _draw_menu(self):
-        self.screen.fill(SKY_TOP)
-        pygame.draw.rect(self.screen, SKY_BOT,   (0, SCREEN_H // 2, SCREEN_W, SCREEN_H // 2))
-        pygame.draw.rect(self.screen, GRASS_COL, (0, SCREEN_H - 75, SCREEN_W, 75))
-        pygame.draw.rect(self.screen, GROUND_COL,(0, SCREEN_H - 50, SCREEN_W, 50))
+        # Lazy-load and cache the entry screen background
+        if not hasattr(self, '_entry_bg'):
+            try:
+                raw = pygame.image.load(
+                    os.path.join(os.path.dirname(__file__), 'images', 'entry_screen.png')
+                ).convert()
+                self._entry_bg = pygame.transform.scale(raw, (SCREEN_W, SCREEN_H))
+            except Exception:
+                self._entry_bg = None
+
+        if self._entry_bg:
+            self.screen.blit(self._entry_bg, (0, 0))
+            # Dark overlay so text stays readable
+            overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 110))
+            self.screen.blit(overlay, (0, 0))
+        else:
+            self.screen.fill(SKY_TOP)
+            pygame.draw.rect(self.screen, SKY_BOT,   (0, SCREEN_H // 2, SCREEN_W, SCREEN_H // 2))
+            pygame.draw.rect(self.screen, GRASS_COL, (0, SCREEN_H - 75, SCREEN_W, 75))
+            pygame.draw.rect(self.screen, GROUND_COL,(0, SCREEN_H - 50, SCREEN_W, 50))
 
         # Title
-        title  = self.font_title.render('LotemAxe', True, SCORE_COL)
-        shadow = self.font_title.render('LotemAxe', True, (70, 55, 0))
+        title  = self.font_title.render('The NOYS', True, SCORE_COL)
+        shadow = self.font_title.render('The NOYS', True, (70, 55, 0))
         tr = title.get_rect(center=(SCREEN_W // 2, SCREEN_H // 3))
         self.screen.blit(shadow, (tr.x + 4, tr.y + 4))
         self.screen.blit(title,  tr)
@@ -387,8 +746,8 @@ class Game:
 
         # Controls
         lines = [
-            ('P1  Arrows/WASD : Move   Space : Jump   Ins : Attack   Del : Magic', WHITE),
-            ('P2  J / L : Move   I : Jump   , : Attack   . : Magic',            (200, 220, 255)),
+            ('P1  Arrows/WASD : Move   Space : Jump   Ins : Attack   Del : Heavy   Home : Magic', WHITE),
+            ('P2  J / L : Move   I : Jump   , : Attack   . : Heavy   ; : Magic',                  (200, 220, 255)),
         ]
         for i, (text, col) in enumerate(lines):
             t = self.font_hint.render(text, True, col)
@@ -485,17 +844,19 @@ class Game:
         hi = self.font_small.render(f'All-time best: {self.hiscore:,}', True, (180, 180, 180))
         self.screen.blit(hi, hi.get_rect(center=(SCREEN_W // 2, 210)))
 
+        yael_line = ('★ YAEL UNLOCKED! ★', (255, 120, 220)) if _is_yael_unlocked() else ('', WHITE)
         lines = [
             ('Game Design & Code', WHITE),
             ('Lotem & Asaf', SCORE_COL),
             ('', WHITE),
+            yael_line,
             ('Art Assets', WHITE),
             ('KayKit — Kay Lousberg (CC0)', (180, 200, 255)),
             ('', WHITE),
             ('Engine', WHITE),
             ('Python + Pygame', (180, 200, 255)),
             ('', WHITE),
-            ('Thanks for playing LotemAxe!', (220, 180, 255)),
+            ('Thanks for playing The NOYS!', (220, 180, 255)),
         ]
         y = 270
         for text, col in lines:
@@ -522,3 +883,32 @@ class Game:
 
         s = self.font_med.render(subtitle, True, WHITE)
         self.screen.blit(s, s.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2 + 20)))
+
+    # Game over screen with random Hebrew/English flavor text
+    _GAMEOVER_LINES = [
+        ('אמא אמרה שעת שינה',  'Mom said it\'s bedtime.'),
+        ('לך לסדר את החדר',              'Go clean your room.'),
+        ('יש לך שיעורי בית',        'You have homework!'),
+        ('אין קינוח בשבילך',   'No dessert for you!'),
+    ]
+
+    def _draw_game_over(self):
+        self._draw_overlay('GAME OVER', (210, 45, 45), 'Press ENTER to return to Menu')
+
+        heb, eng = self._GAMEOVER_LINES[self._gameover_line_idx]
+
+        # Try Hebrew first; fall back to English if the font can't render it
+        flavor_surf = None
+        try:
+            flavor_surf = self.font_gameover.render(heb, True, (255, 220, 80))
+            # Sanity check: if all glyphs rendered as boxes (width too small), fallback
+            if flavor_surf.get_width() < 30:
+                raise ValueError('font missing glyphs')
+        except Exception:
+            flavor_surf = None
+
+        if flavor_surf is None:
+            flavor_surf = self.font_med.render(eng, True, (255, 220, 80))
+
+        self.screen.blit(flavor_surf,
+                         flavor_surf.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2 + 68)))
