@@ -1060,23 +1060,10 @@ class Game:
         self.screen.blit(shadow, (tr.x + 4, tr.y + 4))
         self.screen.blit(title,  tr)
 
-        sub = self.font_med.render('A Golden Axe Adventure', True, WHITE)
-        self.screen.blit(sub, sub.get_rect(center=(SCREEN_W // 2, SCREEN_H // 3 + 88)))
-
         # Hi-score
         if self.hiscore > 0:
             hi = self.font_small.render(f'Hi-Score: {self.hiscore:,}', True, SCORE_COL)
-            self.screen.blit(hi, hi.get_rect(center=(SCREEN_W // 2, SCREEN_H // 3 + 122)))
-
-        # Controls
-        lines = [
-            ('P1  Arrows : Move   Space/Up : Jump   Ins : Attack   Del : Heavy   Home : Magic', WHITE),
-            ('P2  WASD : Move   W : Jump   Tab : Attack   CapsLock : Heavy   LShift : Magic',   (200, 220, 255)),
-            ('ESC during game = return to menu',                                                 (160, 160, 160)),
-        ]
-        for i, (text, col) in enumerate(lines):
-            t = self.font_hint.render(text, True, col)
-            self.screen.blit(t, t.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2 + 18 + i * 22)))
+            self.screen.blit(hi, hi.get_rect(center=(SCREEN_W // 2, SCREEN_H // 3 + 88)))
 
         # Start options
         opts = [
@@ -1088,7 +1075,7 @@ class Game:
         for i, text in enumerate(opts):
             col = WHITE if (i < 2 or blink) else (100, 100, 100)
             t = self.font_small.render(text, True, col)
-            self.screen.blit(t, t.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2 + 80 + i * 28)))
+            self.screen.blit(t, t.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2 + 20 + i * 28)))
 
         # Level-skip hint
         skip = self.font_hint.render('F1 – F5 : jump directly to that level', True, (140, 160, 140))
