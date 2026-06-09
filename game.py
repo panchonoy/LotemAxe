@@ -141,6 +141,7 @@ class Game:
         self._twin_assists      = []  # [[world_x, direction, frames_left, hit_set]]
         self._lava_timers       = {}  # {player_index: frames_in_lava}
         self._tsunami_timers    = {}  # {player_index: frames_in_tsunami}
+        self._tsunami_resume_cd = 0   # grace frames after respawn before wave resumes
 
         # Falling hazards (active during boss fights from level 2+)
         self._hazards   = []  # [[world_x, y, vy, warn_t, type_idx]]
@@ -383,7 +384,12 @@ class Game:
 
         # --- Spawn new enemies ---
         any_alive = any(not p.dead and not p.out_of_lives for p in self.players)
-        new_spawns = self.level.update(int(self.camera_x), freeze_tsunami=not any_alive)
+        if not any_alive:
+            self._tsunami_resume_cd = 120   # 2-second grace when wave was frozen
+        elif self._tsunami_resume_cd > 0:
+            self._tsunami_resume_cd -= 1
+        freeze = not any_alive or self._tsunami_resume_cd > 0
+        new_spawns = self.level.update(int(self.camera_x), freeze_tsunami=freeze)
         for e in new_spawns:
             if isinstance(e, Boss):
                 sfx.play('boss_roar', 1.0)
