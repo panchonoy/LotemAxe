@@ -378,13 +378,6 @@ class Game:
         for e in new_spawns:
             if isinstance(e, Boss):
                 sfx.play('boss_roar', 1.0)
-                music_dir = os.path.join(os.path.dirname(__file__), 'music')
-                sfx.stop_music()
-                for ext in ('mp3', 'ogg', 'wav'):
-                    boss_path = os.path.join(music_dir, f'boss.{ext}')
-                    if os.path.exists(boss_path):
-                        sfx.play_music(boss_path)
-                        break
         self.enemies.extend(new_spawns)
 
         # Swarm warning flash
