@@ -1341,16 +1341,17 @@ class TeacherBoss(Boss):
             self._chalk_cd -= 1
         elif self.hurt_timer == 0 and abs(dx) > 80:
             vx = math.copysign(TB_CHALK_SPD, dx)
-            self._chalk.append([float(self.rect.centerx), float(self.rect.centery - 10), vx, True])
+            sx = float(self.rect.centerx)
+            self._chalk.append([sx, float(self.rect.centery - 10), vx, True, sx])
             self._chalk_cd = TB_CHALK_CD
             self.facing = 1 if dx > 0 else -1
 
-        # Advance chalk projectiles
+        # Advance chalk projectiles  [wx, wy, vx, alive, spawn_x]
         for proj in self._chalk:
             if not proj[3]:
                 continue
             proj[0] += proj[2]
-            if proj[0] < 0 or proj[0] > WORLD_W:
+            if abs(proj[0] - proj[4]) > TB_CHALK_RANGE or proj[0] < 0 or proj[0] > WORLD_W:
                 proj[3] = False
                 continue
             pr = pygame.Rect(int(proj[0]) - 6, int(proj[1]) - 4, 12, 8)
