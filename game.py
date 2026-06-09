@@ -15,6 +15,7 @@ import sfx
 import sprites
 from touch import VirtualPad
 from props import Prop, FallingBox
+from lighting import LightLayer
 
 # Game states
 MENU         = 'menu'
@@ -70,7 +71,8 @@ class Game:
             self._joysticks.append(j)
 
         self._init_fonts()
-        self._vignette = self._build_vignette()
+        self._vignette  = self._build_vignette()
+        self._glow_surf = pygame.Surface((SCREEN_W, SCREEN_H))
         self.hiscore              = _load_hiscore()
         self.num_players          = 1
         self.current_level        = 1
@@ -97,6 +99,65 @@ class Game:
             pygame.draw.rect(surf, (0, 0, 0, alpha),
                              (i, i, SCREEN_W - 2 * i, SCREEN_H - 2 * i), 1)
         return surf
+
+    def _add_glow(self, sx, sy, radius, color, life=18):
+        self._glows.append([int(sx), int(sy), int(radius),
+                            color[0], color[1], color[2], life, life])
+
+    def _draw_glows(self):
+        if not self._glows:
+            return
+        self._glow_surf.fill((0, 0, 0))
+        for gw in self._glows:
+            lf = gw[6] / max(1, gw[7])
+            r2 = max(2, int(gw[2] * (0.7 + 0.5 * (1.0 - lf))))
+            sx, sy = gw[0], gw[1]
+            if not (-r2 - 2 <= sx <= SCREEN_W + r2 + 2):
+                continue
+            col = (min(255, int(gw[3] * lf * 1.5)),
+                   min(255, int(gw[4] * lf * 1.5)),
+                   min(255, int(gw[5] * lf * 1.5)))
+            pygame.draw.circle(self._glow_surf, (col[0] // 5, col[1] // 5, col[2] // 5), (sx, sy), r2)
+            pygame.draw.circle(self._glow_surf, (col[0] // 2, col[1] // 2, col[2] // 2), (sx, sy), max(1, r2 * 2 // 3))
+            pygame.draw.circle(self._glow_surf, col, (sx, sy), max(1, r2 // 3))
+        self.screen.blit(self._glow_surf, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+
+    def _get_lights(self):
+        """Return list of (screen_x, screen_y, radius, kind) for the current frame."""
+        lights = []
+        cam = int(self.camera_x)
+        t   = self.level._torch_t
+
+        # Players always emit a warm aura
+        for player in self.players:
+            if not player.dead and not player.out_of_lives:
+                sx = int(player.x) + P_W // 2 - cam
+                sy = int(player.y) + P_H // 2
+                lights.append((sx, sy, 68, 'cool'))
+
+        if self.current_level == 2:
+            flicker = int(abs(math.sin(t * 0.18)) * 10)
+            for bg_x in self.level._torches:
+                sx = bg_x - int(cam * 0.80)
+                if -130 <= sx <= SCREEN_W + 130:
+                    lights.append((sx, GROUND_Y - 85, 58 + flicker, 'warm'))
+
+        elif self.current_level == 4:
+            # Background lava rivulets (parallax 0.35)
+            for bg_x, _pw in self.level._lava_pools:
+                sx = bg_x - int(cam * 0.35)
+                if -130 <= sx <= SCREEN_W + 130:
+                    f2 = int(abs(math.sin(t * 0.11 + bg_x * 0.02)) * 10)
+                    lights.append((sx, GROUND_Y - 28, 52 + f2, 'hot'))
+            # Actual lava floor zones
+            for lx1, lx2 in self.level.lava:
+                lc = (lx1 + lx2) // 2
+                sx = lc - cam
+                if -130 <= sx <= SCREEN_W + 130:
+                    f3 = int(abs(math.sin(t * 0.09 + lc * 0.01)) * 14)
+                    lights.append((sx, GROUND_Y - 8, 84 + f3, 'hot'))
+
+        return lights
 
     def _new_game(self, level_num=1):
         # Preserve crystal counts when advancing levels (not on fresh start)
@@ -187,6 +248,15 @@ class Game:
         # Falling crystal boxes
         self._fall_boxes  = []
         self._fall_box_cd = random.randint(FBOX_CD_MIN // 2, FBOX_CD_MIN)
+
+        # Glow bursts (additive blended combat effects)
+        self._glows = []
+
+        # Dynamic lighting for cave (L2) and inferno (L4)
+        if level_num in (2, 4):
+            self._light_layer = LightLayer(level_num)
+        else:
+            self._light_layer = None
 
         # Background music — look for music/level{n}.mp3 / .ogg / .wav
         music_dir = os.path.join(os.path.dirname(__file__), 'music')
@@ -500,6 +570,7 @@ class Game:
                     if enemy.take_damage(dmg, kb_dir, stun):
                         scr_x = atk.centerx - int(self.camera_x)
                         spawn_hit(self.particles, scr_x, atk.centery)
+                        self._add_glow(scr_x, atk.centery, 30, (255, 220, 90), 13)
                         self._hit_stop = max(self._hit_stop, 3)
                         sfx.play('hit', 0.7)
                         pid = player.player_id - 1
@@ -523,6 +594,7 @@ class Game:
                 continue   # death FX fires when fuse burns (handled below)
             scr_x = e.rect.centerx - int(self.camera_x)
             spawn_death(self.particles, scr_x, e.rect.centery, e.death_color)
+            self._add_glow(scr_x, e.rect.centery, 52, e.death_color, 22)
 
         # Bomber explosions: fires after fuse countdown
         for enemy in self.enemies:
@@ -924,6 +996,7 @@ class Game:
             scr_y = fb.rect.top - 8
             self._float_texts.append([scr_x, scr_y,
                                        f'+{FBOX_CRYSTALS} crystals!', (160, 230, 255), 70])
+            self._add_glow(scr_x, scr_y + 20, 32, (140, 230, 255), 18)
             sfx.play('crystal', 0.8)
 
         self._fall_boxes = [fb for fb in self._fall_boxes if fb.update()]
@@ -968,6 +1041,7 @@ class Game:
                     scr_y = int(player.y) - 20
                     col   = (80, 220, 255) if 'Crystal' in label else (255, 220, 80) if 'Woof' in label else (80, 220, 80)
                     self._float_texts.append([scr_x, scr_y, label, col, 50])
+                    self._add_glow(scr_x, scr_y + 10, 28, col, 16)
 
         # --- Falling hazards (level 2+ during boss fight) ---
         if self.current_level >= 2 and self.level.boss_triggered:
@@ -1006,6 +1080,11 @@ class Game:
 
         # --- Particles ---
         self.particles = [p for p in self.particles if p.update()]
+
+        # --- Glow decay ---
+        for gw in self._glows:
+            gw[6] -= 1
+        self._glows = [gw for gw in self._glows if gw[6] > 0]
 
         # --- Decay ---
         self._shake       = max(0.0, self._shake - 0.4)
@@ -1109,6 +1188,7 @@ class Game:
 
         self._float_texts.append([SCREEN_W // 2, SCREEN_H // 3,
                                    'TEAM BLAST!', (255, 255, 80), 100])
+        self._add_glow(SCREEN_W // 2, SCREEN_H // 2, 190, (60, 220, 255), 40)
         self._buddy_cd    = BUDDY_CD
         self._magic_frame = [-999, -999]
         self._shake       = max(self._shake, 18.0)
@@ -1129,6 +1209,7 @@ class Game:
                         spawn_death(self.particles, scr_x, enemy.rect.centery, enemy.death_color)
         self.enemies = [e for e in self.enemies if not e.dead or e._die_timer > 0]
         spawn_magic(self.particles, cx - int(self.camera_x), cy, P_MAGIC_RAD_ASAF)
+        self._add_glow(cx - int(self.camera_x), cy, 60, (255, 110, 20), 24)
 
     def _magic_lotem(self, caster):
         """Pee Stream — forward cone that stuns enemies."""
@@ -1145,6 +1226,7 @@ class Game:
                         spawn_death(self.particles, scr_x, enemy.rect.centery, enemy.death_color)
         self.enemies = [e for e in self.enemies if not e.dead or e._die_timer > 0]
         spawn_pee(self.particles, cx - int(self.camera_x), cy, caster.facing)
+        self._add_glow(cx - int(self.camera_x), cy, 45, (180, 255, 50), 18)
 
     def _magic_gal(self, caster):
         """Chain Lightning — zaps up to 5 enemies, bolt jumps to the nearest next."""
@@ -1186,6 +1268,8 @@ class Game:
         self.enemies = [e for e in self.enemies if not e.dead or e._die_timer > 0]
         if len(chain_screen) > 1:
             spawn_lightning_chain(self.particles, chain_screen)
+            for _csx, _csy in chain_screen:
+                self._add_glow(_csx, _csy, 26, (80, 200, 255), 16)
 
     def _magic_nitay(self, caster):
         """Twin Assist — ghost Gal flies across the screen dealing damage."""
@@ -1199,6 +1283,8 @@ class Game:
                     int(caster.x) + P_W // 2 - int(self.camera_x),
                     int(caster.y) + P_H // 2,
                     60)
+        self._add_glow(int(caster.x) + P_W // 2 - int(self.camera_x),
+                       int(caster.y) + P_H // 2, 50, (200, 80, 255), 20)
 
     # ------------------------------------------------------------------ draw
     def _draw(self):
@@ -1350,6 +1436,11 @@ class Game:
             flash.fill((50, 80, 220, alpha))
             self.screen.blit(flash, (0, 0))
 
+        if self._light_layer:
+            self._light_layer.render(self.screen, self._get_lights())
+
+        self._draw_glows()
+        self.level.draw_color_grade(self.screen)
         self.screen.blit(self._vignette, (0, 0))
 
         # --- Tsunami HUD warning (Level 3) ---

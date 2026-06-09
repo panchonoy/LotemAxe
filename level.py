@@ -87,6 +87,14 @@ class Level:
                 g = int(INFERNO_SKY_TOP[1] + (INFERNO_SKY_BOT[1] - INFERNO_SKY_TOP[1]) * t)
                 b = int(INFERNO_SKY_TOP[2] + (INFERNO_SKY_BOT[2] - INFERNO_SKY_TOP[2]) * t)
                 pygame.draw.line(self._sky, (r, g, b), (0, y), (SCREEN_W, y))
+            # Pre-bake heat shimmer gradient (orange glow rising from the lava floor)
+            _heat_h = 130
+            self._heat_surf = pygame.Surface((SCREEN_W, _heat_h))
+            self._heat_surf.fill((0, 0, 0))
+            for _hy in range(_heat_h):
+                _tf = (1.0 - _hy / _heat_h) ** 2
+                pygame.draw.line(self._heat_surf, (int(90 * _tf), int(22 * _tf), 0),
+                                 (0, _hy), (SCREEN_W - 1, _hy))
             bg_range_s = int(WORLD_W * 0.70 + SCREEN_W)
             self._stalactites = [
                 (rng.randint(0, bg_range_s), rng.randint(15, 80))
@@ -161,6 +169,21 @@ class Level:
                 g = int(SKY_TOP[1] + (SKY_BOT[1] - SKY_TOP[1]) * t)
                 b = int(SKY_TOP[2] + (SKY_BOT[2] - SKY_TOP[2]) * t)
                 pygame.draw.line(self._sky, (r, g, b), (0, y), (SCREEN_W, y))
+            # Pre-bake sunbeam surfaces (screen-space atmospheric shafts)
+            self._beams = []
+            _lean = 52
+            for _bx, _bw, _ba in [(95, 68, 20), (275, 48, 15), (495, 72, 20),
+                                   (690, 52, 16), (840, 62, 18)]:
+                _bh = GROUND_Y
+                _bs = pygame.Surface((_bw + _lean + 4, _bh), pygame.SRCALPHA)
+                _bs.fill((0, 0, 0, 0))
+                _outer = [(2, 0), (_bw + 2, 0), (_bw + _lean + 2, _bh), (_lean + 2, _bh)]
+                pygame.draw.polygon(_bs, (255, 245, 180, _ba), _outer)
+                _im = _bw // 4
+                _inner = [(_im + 2, 0), (_bw - _im + 2, 0),
+                          (_bw - _im + _lean + 2, _bh), (_im + _lean + 2, _bh)]
+                pygame.draw.polygon(_bs, (255, 250, 210, _ba + 8), _inner)
+                self._beams.append((_bx, _bs))
         else:
             # Cave: stalactites + torches
             bg_range_s = int(WORLD_W * 0.70 + SCREEN_W)
@@ -188,6 +211,14 @@ class Level:
                 g = int(CAVE_SKY_TOP[1] + (CAVE_SKY_BOT[1] - CAVE_SKY_TOP[1]) * t)
                 b = int(CAVE_SKY_TOP[2] + (CAVE_SKY_BOT[2] - CAVE_SKY_TOP[2]) * t)
                 pygame.draw.line(self._sky, (r, g, b), (0, y), (SCREEN_W, y))
+
+        # Per-level color grade overlay (pre-baked once)
+        _grade_cols = {1: (255, 245, 200, 18), 3: (200, 220, 255, 22), 5: (240, 220, 255, 16)}
+        if level_num in _grade_cols:
+            self._grade_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            self._grade_surf.fill(_grade_cols[level_num])
+        else:
+            self._grade_surf = None
 
         self._torch_t = 0  # flicker timer
         self._prng = random.Random(242 + level_num)
@@ -401,6 +432,12 @@ class Level:
         self._update_draw_particles(surface, camera_x)
 
     def _draw_bg_l1(self, surface, camera_x):
+        # Sunbeams — gentle screen-space sway, drawn behind mountains
+        t = self._torch_t
+        for i, (bx, bs) in enumerate(self._beams):
+            sx = bx + int(math.sin(t * 0.008 + i * 1.4) * 11)
+            surface.blit(bs, (sx, 0))
+
         for bg_x, peak_y, mw in self._mountains:
             sx = bg_x - int(camera_x * 0.22)
             if -mw <= sx <= SCREEN_W + mw:
@@ -551,6 +588,10 @@ class Level:
         for _i in range(-_off2, SCREEN_W + 26, 26):
             pygame.draw.rect(surface, (60, 20, 8), (_i, GROUND_Y + 3, 9, 5))
             pygame.draw.rect(surface, (74, 26, 10), (_i + 13, GROUND_Y + 5, 7, 4))
+        # Heat shimmer rising from lava floor
+        _hbob = int(abs(math.sin(t * 0.07)) * 5)
+        surface.blit(self._heat_surf, (0, GROUND_Y - 115 + _hbob),
+                     special_flags=pygame.BLEND_RGB_ADD)
 
     def _draw_bg_l5(self, surface, camera_x):
         t = self._torch_t
@@ -813,3 +854,8 @@ class Level:
                 s = max(1, int(3 * lf))
                 pygame.draw.line(surface, col, (sx - s, sy), (sx + s, sy), 1)
                 pygame.draw.line(surface, col, (sx, sy - s), (sx, sy + s), 1)
+
+    def draw_color_grade(self, surface):
+        """Blit a pre-baked subtle color tint over the fully-drawn scene."""
+        if self._grade_surf:
+            surface.blit(self._grade_surf, (0, 0))
