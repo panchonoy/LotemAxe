@@ -228,21 +228,12 @@ function show_infobox() {
 
         /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
         canvas.emscripten {
-            border: 0px none !important;
+            border: 0px none;
             background-color: #000;
-            /* Maintain 16:9 landscape — letterbox/pillarbox as needed.
-               !important prevents pygbag window_resize() from overriding. */
-            width:  min(100vw, 177.78vh) !important;
-            height: min(56.25vw, 100vh)  !important;
+            padding: 0;
             z-index: 5;
-            padding: 0 !important;
-            margin: auto !important;
-            position: fixed !important;
-            top: 0 !important;
-            bottom: 0 !important;
-            left: 0 !important;
-            right: 0 !important;
-            display: block !important;
+            display: block;
+            /* JS fixCanvas() overrides position/size after pygbag initialises */
         }
 
         body {
@@ -412,9 +403,33 @@ frameborder="1"
 
     <script type="application/javascript">
 
-    globalThis.__canvas_resized = (self, ecw, ech) => {
-        console.warn("TODO: panda3d canvas monitor", self, ecw, ech)
+    // Force 16:9 canvas size after pygbag sets its own dimensions
+    function fixCanvas() {
+        var c = document.getElementById('canvas');
+        if (!c) return;
+        var vw = window.innerWidth, vh = window.innerHeight;
+        var w = Math.min(vw, vh * 16 / 9);
+        var h = w * 9 / 16;
+        var left = (vw - w) / 2;
+        var top  = (vh - h) / 2;
+        c.style.setProperty('width',    w    + 'px', 'important');
+        c.style.setProperty('height',   h    + 'px', 'important');
+        c.style.setProperty('position', 'fixed',     'important');
+        c.style.setProperty('left',     left + 'px', 'important');
+        c.style.setProperty('top',      top  + 'px', 'important');
+        c.style.setProperty('margin',   '0',         'important');
     }
+
+    // Called by pygbag every time it resizes the canvas — correct it immediately
+    globalThis.__canvas_resized = (self, ecw, ech) => {
+        fixCanvas();
+    }
+
+    window.addEventListener('resize', fixCanvas);
+    // Also apply at load time after pygbag has had time to set up
+    window.addEventListener('load', function() {
+        [500, 1500, 3000, 6000].forEach(function(t) { setTimeout(fixCanvas, t); });
+    });
 
     async function custom_onload(debug_hidden) {
         // this is called before anything python is loaded
