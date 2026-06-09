@@ -256,7 +256,7 @@ SPAWNS_L2 = [
     (3000, [(4400, 'jumper'), (4600, 'cannoneer'), (4800, 'jumper'), (5000, 'thrower')]),
     (3800, [(5200, 'heavy'), (5400, 'healer'), (5600, 'cannoneer')]),
     (4500, [(5800, 'cannoneer'), (6000, 'bomber'), (6200, 'jumper'), (6400, 'heavy')]),
-    (5200, [(6600, 'healer'), (6800, 'cannoneer'), (7000, 'thrower')]),
+    (5200, [(6600, 'healer'), (6800, 'heavy'), (7000, 'grunt')]),
     (6000, [(7200, 'grunt'), (7400, 'heavy'), (7500, 'grunt')]),
     (6400, [(BOSS_SPAWN, 'boss')]),
 ]
@@ -355,7 +355,7 @@ TB_ATK_DMG     = 22    # Ruler Sweep damage
 TB_ATK_RANGE   = 220
 TB_ATK_CD      = 43
 TB_CHALK_DMG   = 16
-TB_CHALK_SPD   = 1.5
+TB_CHALK_SPD   = 4.4
 TB_CHALK_CD    = 240
 TB_SCORE       = 4000
 TB_BODY        = ( 80,  80,  90)
