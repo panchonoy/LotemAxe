@@ -14,13 +14,15 @@ import ui
 import sfx
 import sprites
 from touch import VirtualPad
+from props import Prop
 
 # Game states
 MENU         = 'menu'
 COLOR_SELECT = 'color_select'
 PLAYING      = 'playing'
 GAME_OVER    = 'game_over'
-VICTORY      = 'victory'
+VICTORY      = 'victory'   # kept for joystick compat; logic uses LEVEL_END
+LEVEL_END    = 'level_end'
 CREDITS      = 'credits'
 
 HISCORE_FILE  = os.path.join(os.path.dirname(__file__), 'highscore.txt')
@@ -68,11 +70,13 @@ class Game:
             self._joysticks.append(j)
 
         self._init_fonts()
-        self.hiscore     = _load_hiscore()
-        self.num_players = 1
-        self.current_level = 1
-        self.state       = MENU
-        self._vpad       = VirtualPad()
+        self.hiscore              = _load_hiscore()
+        self.num_players          = 1
+        self.current_level        = 1
+        self.state                = MENU
+        self.berserk_mode         = False
+        self._pending_bonus_lives = 0
+        self._vpad                = VirtualPad()
         self._go_to_menu()
 
     # ------------------------------------------------------------------ setup
@@ -114,29 +118,46 @@ class Game:
             if i < len(_saved_crystals):
                 p.crystals = _saved_crystals[i]
 
+        # Apply bonus lives earned from previous level (stars / full-HP reward)
+        if self._pending_bonus_lives > 0 and level_num > 1:
+            for p in self.players:
+                p.lives = min(PLAYER_LIVES_MAX, p.lives + self._pending_bonus_lives)
+            self._pending_bonus_lives = 0
+
         self.enemies   = []
         self.particles = []
         self.camera_x  = 0.0
         self.score     = 0
         self.level     = Level(level_num, num_players=self.num_players)
 
-        if level_num == 1:
-            pickup_data = PICKUPS_L1
-        elif level_num == 2:
-            pickup_data = PICKUPS_L2
-        elif level_num == 3:
-            pickup_data = PICKUPS_L3
-        elif level_num == 4:
-            pickup_data = PICKUPS_L4
-        else:
-            pickup_data = PICKUPS_L5
-        self.pickups = [Pickup(wx, kind) for wx, kind in pickup_data]
+        _LEVEL_DATA = {
+            1: (PICKUPS_L1, PROPS_L1, []),
+            2: (PICKUPS_L2, PROPS_L2, HAZARD_ZONES_L2),
+            3: (PICKUPS_L3, PROPS_L3, HAZARD_ZONES_L3),
+            4: (PICKUPS_L4, PROPS_L4, HAZARD_ZONES_L4),
+            5: (PICKUPS_L5, PROPS_L5, HAZARD_ZONES_L5),
+        }
+        pickup_data, prop_data, hz_data = _LEVEL_DATA.get(level_num, _LEVEL_DATA[5])
+        self.pickups   = [Pickup(wx, kind) for wx, kind in pickup_data]
+        self._props    = [Prop(wx, kind)   for wx, kind in prop_data]
+        self._hz_zones = list(hz_data)
+        self._hz_timer = 0
+        self._hz_dmg_timers = {}   # {player_index: frames_in_active_zone}
         self._float_texts = []   # [(screen_x, screen_y, text, color, frames_left)]
 
         self._hit_stop          = 0
         self._shake             = 0.0
         self._magic_flash       = 0
         self._victory_wait      = 0
+
+        # Per-level tracking (stats, streak, stars)
+        self._lvl_deaths  = 0
+        self._hit_streak  = [0] * len(self.players)
+        self._stats = [
+            {'kills': 0, 'dmg_dealt': 0, 'dmg_taken': 0, 'specials': 0, 'peak_streak': 0}
+            for _ in self.players
+        ]
+        self._level_stars = 0
         self._gameover_line_idx = random.randint(0, len(self._GAMEOVER_LINES) - 1)
         self._twin_assists      = []  # [[world_x, direction, frames_left, hit_set]]
         self._lava_timers       = {}  # {player_index: frames_in_lava}
@@ -148,6 +169,11 @@ class Game:
         self._hazard_cd = random.randint(FALL_HAZARD_MIN_CD, FALL_HAZARD_MAX_CD)
         self.rockets    = []  # live Rocket objects from RocketBoss
         self.blocks     = []  # live ToyBlock objects from DoriBoss
+
+        # Buddy special (Team Blast)
+        self._frame_t     = 0     # monotonic frame counter for sync detection
+        self._buddy_cd    = 0     # cooldown: must reach 0 before next blast
+        self._magic_frame = [-999, -999]  # frame each player last used magic
 
         # Background music — look for music/level{n}.mp3 / .ogg / .wav
         music_dir = os.path.join(os.path.dirname(__file__), 'music')
@@ -250,6 +276,7 @@ class Game:
             lv = getattr(self, '_start_level', 1)
             self._start_level = 1
             self._p_ready = [False, False]
+            self._pending_bonus_lives = 0   # fresh game — no carry-over
             self._new_game(level_num=lv)
             self.state = PLAYING
 
@@ -278,6 +305,8 @@ class Game:
                     self._go_to_menu()
 
                 if self.state == MENU:
+                    if event.key == pygame.K_b:
+                        self.berserk_mode = not self.berserk_mode
                     _LEVEL_KEYS = {
                         pygame.K_F1: 1, pygame.K_F2: 2, pygame.K_F3: 3,
                         pygame.K_F4: 4, pygame.K_F5: 5,
@@ -314,11 +343,14 @@ class Game:
                 elif self.state == COLOR_SELECT:
                     self._handle_color_select(event.key)
 
-                elif self.state == VICTORY:
+                elif self.state in (VICTORY, LEVEL_END):
                     if event.key == pygame.K_RETURN:
-                        next_level = self.current_level + 1
-                        self._new_game(level_num=next_level)
-                        self.state = PLAYING
+                        if self.current_level >= 5:
+                            self.state = CREDITS
+                        else:
+                            next_level = self.current_level + 1
+                            self._new_game(level_num=next_level)
+                            self.state = PLAYING
                 elif self.state == GAME_OVER:
                     if event.key == pygame.K_RETURN:
                         self._go_to_menu()
@@ -332,10 +364,13 @@ class Game:
                     self.num_players = 1
                     self._new_game()
                     self.state = PLAYING
-                elif self.state == VICTORY and event.button == 9:
-                    next_level = self.current_level + 1
-                    self._new_game(level_num=next_level)
-                    self.state = PLAYING
+                elif self.state in (VICTORY, LEVEL_END) and event.button == 9:
+                    if self.current_level >= 5:
+                        self.state = CREDITS
+                    else:
+                        next_level = self.current_level + 1
+                        self._new_game(level_num=next_level)
+                        self.state = PLAYING
                 elif self.state in (GAME_OVER, CREDITS) and event.button == 9:
                     self._go_to_menu()
 
@@ -344,6 +379,10 @@ class Game:
         if self._hit_stop > 0:
             self._hit_stop -= 1
             return
+
+        self._frame_t += 1
+        if self._buddy_cd > 0:
+            self._buddy_cd -= 1
 
         all_keys = pygame.key.get_pressed()
 
@@ -357,6 +396,11 @@ class Game:
             player.handle_input(all_keys)
             was_dead = player.dead
             player.update(int(self.camera_x), platforms, pits)
+            if not was_dead and player.dead:
+                self._lvl_deaths += 1
+                pid = player.player_id - 1
+                if pid < len(self._hit_streak):
+                    self._hit_streak[pid] = 0
             if player.magic_just_used:
                 player.magic_just_used = False
                 self._do_magic(player)
@@ -393,6 +437,10 @@ class Game:
         for e in new_spawns:
             if isinstance(e, Boss):
                 sfx.play('boss_roar', 1.0)
+        if self.berserk_mode:
+            for e in new_spawns:
+                e.SPEED   = e.SPEED * BERSERK_SPEED_MULT
+                e.atk_dmg = int(e.atk_dmg * BERSERK_DMG_MULT)
         self.enemies.extend(new_spawns)
 
         # Swarm warning flash
@@ -411,6 +459,10 @@ class Game:
             if hit and target_player:
                 if target_player.take_damage(enemy.atk_dmg):
                     self._shake = max(self._shake, 6.0)
+                    tp_pid = target_player.player_id - 1
+                    if tp_pid < len(self._stats):
+                        self._stats[tp_pid]['dmg_taken'] += enemy.atk_dmg
+                        self._hit_streak[tp_pid] = 0
             # Boss charge area-hit shake
             if hasattr(enemy, '_charge_timer') and enemy._charge_timer > 0:
                 self._shake = max(self._shake, 5.0)
@@ -432,15 +484,31 @@ class Game:
                     kb_dir = 1 if enemy.rect.centerx >= player.rect.centerx else -1
                     dmg   = player.current_atk_dmg
                     stun  = player.current_atk_stun
+                    if getattr(enemy, '_is_weak', False):
+                        dmg = int(dmg * 2.5)
+                        scr_x = atk.centerx - int(self.camera_x)
+                        self._float_texts.append([scr_x, atk.centery - 20,
+                                                  'WEAK!', (255, 80, 255), 55])
                     if enemy.take_damage(dmg, kb_dir, stun):
                         scr_x = atk.centerx - int(self.camera_x)
                         spawn_hit(self.particles, scr_x, atk.centery)
                         self._hit_stop = max(self._hit_stop, 3)
                         sfx.play('hit', 0.7)
+                        pid = player.player_id - 1
+                        if pid < len(self._stats):
+                            self._stats[pid]['dmg_dealt'] += dmg
+                            self._hit_streak[pid] += 1
+                            if self._hit_streak[pid] > self._stats[pid]['peak_streak']:
+                                self._stats[pid]['peak_streak'] = self._hit_streak[pid]
+                            if self._hit_streak[pid] >= COMBO_LIFE_THRESHOLD:
+                                self._award_combo_life(player, pid)
                         if enemy.dead:
-                            self.score += enemy.score_value
+                            score_add = enemy.score_value * (BERSERK_SCORE_MULT if self.berserk_mode else 1)
+                            self.score += score_add
                             dead_this_frame.append(enemy)
                             sfx.play('death', 0.5)
+                            if pid < len(self._stats):
+                                self._stats[pid]['kills'] += 1
 
         for e in dead_this_frame:
             if isinstance(e, Bomber):
@@ -500,6 +568,10 @@ class Game:
                 if rocket.rect.colliderect(player.rect):
                     if player.take_damage(rocket.dmg):
                         self._shake = max(self._shake, 8.0)
+                        rk_pid = player.player_id - 1
+                        if rk_pid < len(self._stats):
+                            self._stats[rk_pid]['dmg_taken'] += rocket.dmg
+                            self._hit_streak[rk_pid] = 0
                     scr_x = rocket.rect.centerx - int(self.camera_x)
                     spawn_explosion(self.particles, scr_x, rocket.rect.centery)
                     hit = True
@@ -532,6 +604,10 @@ class Game:
                 if block.rect.colliderect(player.rect):
                     if player.take_damage(block.dmg):
                         self._shake = max(self._shake, 6.0)
+                        bl_pid = player.player_id - 1
+                        if bl_pid < len(self._stats):
+                            self._stats[bl_pid]['dmg_taken'] += block.dmg
+                            self._hit_streak[bl_pid] = 0
                     scr_x = block.rect.centerx - int(self.camera_x)
                     spawn_hit(self.particles, scr_x, block.rect.centery)
                     hit = True
@@ -547,6 +623,10 @@ class Game:
                     if player.take_damage(dmg):
                         self._shake = max(self._shake, 4.0)
                         sfx.play('hit', 0.5)
+                        pr_pid = player.player_id - 1
+                        if pr_pid < len(self._stats):
+                            self._stats[pr_pid]['dmg_taken'] += dmg
+                            self._hit_streak[pr_pid] = 0
 
         # --- TeacherBoss: reinforcement spawns + SILENCE! float text ---
         for enemy in self.enemies:
@@ -555,6 +635,28 @@ class Game:
                     gx = max(50, min(int(gx), WORLD_W - 50))
                     self.enemies.append(self.level.spawn_grunt(gx))
                 enemy.pending_spawns = []
+
+            # Mid-fight wave spawns (Boss weakpoint HP-threshold waves)
+            if getattr(enemy, 'pending_wave_spawns', None):
+                _KIND_MAP = {
+                    'grunt': lambda gx: Grunt(gx, GROUND_Y - Grunt.H),
+                    'heavy': lambda gx: Heavy(gx, GROUND_Y - Heavy.H),
+                    'eye':   lambda gx: FlyingEye(gx, GROUND_Y - FlyingEye.H - 30),
+                }
+                for (gx, kind) in enemy.pending_wave_spawns:
+                    gx = max(50, min(int(gx), WORLD_W - 50))
+                    factory = _KIND_MAP.get(kind)
+                    if factory:
+                        new_e = factory(gx)
+                        if self.berserk_mode:
+                            new_e.SPEED   = new_e.SPEED   * BERSERK_SPEED_MULT
+                            new_e.atk_dmg = int(new_e.atk_dmg * BERSERK_DMG_MULT)
+                        self.enemies.append(new_e)
+                # Show wave alert on boss
+                scr_x = enemy.rect.centerx - int(self.camera_x)
+                self._float_texts.append([scr_x, enemy.rect.top - 14,
+                                          'MINION WAVE!', (255, 200, 60), 80])
+                enemy.pending_wave_spawns = []
             if hasattr(enemy, 'swing_text') and enemy.swing_text:
                 scr_x = enemy.rect.centerx - int(self.camera_x)
                 self._float_texts.append([scr_x, enemy.rect.top - 10, enemy.swing_text,
@@ -651,7 +753,7 @@ class Game:
                         enemy._die_timer = 36
                         enemy._die_vx    = 2.5 if pit_cx > ecx else -2.5
                         enemy._die_vy    = 3.0   # fall downward
-                        self.score += enemy.score_value
+                        self.score += enemy.score_value * (BERSERK_SCORE_MULT if self.berserk_mode else 1)
                         scr_x = ecx - int(self.camera_x)
                         spawn_death(self.particles, scr_x, enemy.rect.centery,
                                     enemy.death_color)
@@ -685,7 +787,7 @@ class Game:
                             enemy._die_timer = 36
                             enemy._die_vx    = 0.0
                             enemy._die_vy    = -4.0
-                            self.score += enemy.score_value
+                            self.score += enemy.score_value * (BERSERK_SCORE_MULT if self.berserk_mode else 1)
                             scr_x = ecx - int(self.camera_x)
                             spawn_death(self.particles, scr_x, enemy.rect.centery,
                                         enemy.death_color)
@@ -753,11 +855,59 @@ class Game:
                             scr_x = enemy.rect.centerx - int(self.camera_x)
                             spawn_hit(self.particles, scr_x, enemy.rect.centery)
                             if enemy.dead:
-                                self.score += enemy.score_value
+                                self.score += enemy.score_value * (BERSERK_SCORE_MULT if self.berserk_mode else 1)
                                 spawn_death(self.particles, scr_x, enemy.rect.centery,
                                             enemy.death_color)
         self._twin_assists = [ta for ta in self._twin_assists if ta[2] > 0]
         self.enemies = [e for e in self.enemies if not e.dead or e._die_timer > 0]
+
+        # --- Destructible props ---
+        for player in self.players:
+            if player.dead or player.out_of_lives:
+                continue
+            atk_p = player.atk_rect
+            if not atk_p:
+                continue
+            for prop in self._props:
+                if not prop.alive:
+                    continue
+                if atk_p.colliderect(prop.rect):
+                    if prop.hit():
+                        scr_x = int(prop.wx) - int(self.camera_x) + prop.W // 2
+                        spawn_hit(self.particles, scr_x, GROUND_Y - prop.H // 2)
+                        if random.random() < PROP_DROP_CHANCE:
+                            kind = random.choice(['milk', 'crystal'])
+                            self.pickups.append(Pickup(prop.wx, kind))
+        self._props = [p for p in self._props if p.update()]
+
+        # --- Hazard zones (persistent cycling floor hazards) ---
+        if self._hz_zones:
+            self._hz_timer += 1
+            phase = self._hz_timer % HAZARD_ZONE_CYCLE
+            hz_active  = HAZARD_ZONE_WARN <= phase < HAZARD_ZONE_WARN + HAZARD_ZONE_ACTIVE
+            hz_warning = phase < HAZARD_ZONE_WARN
+            for i, player in enumerate(self.players):
+                if player.dead or player.out_of_lives:
+                    self._hz_dmg_timers.pop(i, None)
+                    continue
+                pcx = int(player.x) + P_W // 2
+                in_hz = player.on_ground and any(
+                    x1 <= pcx <= x2 for x1, x2, _ in self._hz_zones
+                )
+                if in_hz and hz_active:
+                    self._hz_dmg_timers[i] = self._hz_dmg_timers.get(i, 0) + 1
+                    if self._hz_dmg_timers[i] >= HAZARD_ZONE_TICK:
+                        self._hz_dmg_timers[i] = 0
+                        player.hp = max(0, player.hp - HAZARD_ZONE_DMG)
+                        self._shake = max(self._shake, 2.0)
+                        if player.hp == 0 and not player.dead:
+                            player._die()
+                        pid = player.player_id - 1
+                        if pid < len(self._stats):
+                            self._stats[pid]['dmg_taken'] += HAZARD_ZONE_DMG
+                            self._hit_streak[pid] = 0
+                else:
+                    self._hz_dmg_timers.pop(i, None)
 
         # --- Pickups ---
         for pickup in self.pickups:
@@ -800,6 +950,10 @@ class Game:
                                     hit_players.add(player)
                                     if player.take_damage(FALL_HAZARD_DMG):
                                         self._shake = max(self._shake, 4.0)
+                                        fh_pid = player.player_id - 1
+                                        if fh_pid < len(self._stats):
+                                            self._stats[fh_pid]['dmg_taken'] += FALL_HAZARD_DMG
+                                            self._hit_streak[fh_pid] = 0
             self._hazards = [hz for hz in self._hazards if hz[1] < SCREEN_H + 60]
 
         # --- Particles ---
@@ -824,18 +978,48 @@ class Game:
                 if self.score > self.hiscore:
                     self.hiscore = self.score
                     _save_hiscore(self.hiscore)
-                if self.current_level < 5:
-                    self.state = VICTORY          # → next level
-                else:
+                if self.current_level >= 5:
                     _unlock_yael()               # beat all 5 levels!
-                    self.state = CREDITS
+                self._calc_level_stars()
+                self.state = LEVEL_END
 
         all_out = all(p.out_of_lives for p in self.players)
         if all_out:
             self.state = GAME_OVER
 
+    # ------------------------------------------------------------------ stars / combo
+    def _calc_level_stars(self):
+        total_dmg    = sum(s['dmg_taken'] for s in self._stats)
+        total_max_hp = sum(p.max_hp for p in self.players)
+        dmg_frac     = total_dmg / max(1, total_max_hp)
+
+        if dmg_frac < STAR_3_DMG_FRAC:
+            self._level_stars = 3
+        elif dmg_frac < STAR_2_DMG_FRAC:
+            self._level_stars = 2
+        else:
+            self._level_stars = 1
+
+        self._pending_bonus_lives = 0
+        if self._level_stars == 3:
+            self._pending_bonus_lives += 1          # 3-star performance reward
+        if self._lvl_deaths == 0:
+            self._pending_bonus_lives += 1          # "finish with full hearts" reward
+
+    def _award_combo_life(self, player, pid):
+        if player.lives < PLAYER_LIVES_MAX:
+            player.lives = min(PLAYER_LIVES_MAX, player.lives + 1)
+            scr_x = int(player.x) - int(self.camera_x) + P_W // 2
+            scr_y = int(player.y) - 35
+            self._float_texts.append([scr_x, scr_y, 'x20 COMBO  +1 LIFE!', (80, 255, 80), 100])
+            sfx.play('respawn', 0.8)
+        self._hit_streak[pid] = 0
+
     # ------------------------------------------------------------------ magic
     def _do_magic(self, caster):
+        pid = caster.player_id - 1
+        if pid < len(self._stats):
+            self._stats[pid]['specials'] += 1
         char = getattr(caster, 'char_name', '')
         if   char == 'lotem': self._magic_lotem(caster)
         elif char == 'gal':   self._magic_gal(caster)
@@ -844,6 +1028,44 @@ class Game:
         self._shake       = 12.0
         self._magic_flash = 18
         sfx.play('magic', 0.8)
+
+        # Record this player's magic frame and check for buddy sync
+        if len(self.players) == 2 and pid < 2:
+            self._magic_frame[pid] = self._frame_t
+            other_pid = 1 - pid
+            other_frame = self._magic_frame[other_pid]
+            if (self._buddy_cd == 0 and
+                    self._frame_t - other_frame <= BUDDY_SYNC_WINDOW and
+                    other_frame > 0):
+                other_player = self.players[other_pid]
+                dist = abs(int(caster.x) - int(other_player.x))
+                if dist <= BUDDY_SYNC_DIST:
+                    self._magic_buddy()
+
+    def _magic_buddy(self):
+        """Team Blast — triggered when both players cast magic within sync window."""
+        cam = int(self.camera_x)
+        for enemy in self.enemies:
+            if not enemy.dead:
+                kb_dir = 1 if enemy.rect.centerx >= SCREEN_W // 2 + cam else -1
+                if enemy.take_damage(BUDDY_BLAST_DMG, kb_dir, BUDDY_BLAST_STUN):
+                    if enemy.dead:
+                        self.score += enemy.score_value * (BERSERK_SCORE_MULT if self.berserk_mode else 1)
+                        scr_x = enemy.rect.centerx - cam
+                        spawn_death(self.particles, scr_x, enemy.rect.centery, enemy.death_color)
+        self.enemies = [e for e in self.enemies if not e.dead or e._die_timer > 0]
+
+        for player in self.players:
+            if not player.dead and not player.out_of_lives:
+                player.hurt_timer = max(player.hurt_timer, BUDDY_INVINC)
+
+        self._float_texts.append([SCREEN_W // 2, SCREEN_H // 3,
+                                   'TEAM BLAST!', (255, 255, 80), 100])
+        self._buddy_cd    = BUDDY_CD
+        self._magic_frame = [-999, -999]
+        self._shake       = max(self._shake, 18.0)
+        self._magic_flash = max(self._magic_flash, 30)
+        sfx.play('magic', 1.0)
 
     def _magic_asaf(self, caster):
         """Power Slam — wide shockwave in all directions."""
@@ -854,7 +1076,7 @@ class Game:
                 kb_dir = 1 if enemy.rect.centerx >= cx else -1
                 if enemy.take_damage(P_MAGIC_DMG_ASAF, kb_dir, 0):
                     if enemy.dead:
-                        self.score += enemy.score_value
+                        self.score += enemy.score_value * (BERSERK_SCORE_MULT if self.berserk_mode else 1)
                         scr_x = enemy.rect.centerx - int(self.camera_x)
                         spawn_death(self.particles, scr_x, enemy.rect.centery, enemy.death_color)
         self.enemies = [e for e in self.enemies if not e.dead or e._die_timer > 0]
@@ -870,7 +1092,7 @@ class Game:
             if in_front and abs(dx) <= P_PEE_RANGE and abs(enemy.rect.centery - cy) < 45:
                 if enemy.take_damage(P_PEE_DMG, caster.facing, P_PEE_STUN):
                     if enemy.dead:
-                        self.score += enemy.score_value
+                        self.score += enemy.score_value * (BERSERK_SCORE_MULT if self.berserk_mode else 1)
                         scr_x = enemy.rect.centerx - int(self.camera_x)
                         spawn_death(self.particles, scr_x, enemy.rect.centery, enemy.death_color)
         self.enemies = [e for e in self.enemies if not e.dead or e._die_timer > 0]
@@ -905,7 +1127,7 @@ class Game:
             kb_dir = 1 if target.rect.centerx >= cx else -1
             if target.take_damage(P_CHAIN_DMG, kb_dir, 20):
                 if target.dead:
-                    self.score += target.score_value
+                    self.score += target.score_value * (BERSERK_SCORE_MULT if self.berserk_mode else 1)
                     scr_x = target.rect.centerx - cam
                     spawn_death(self.particles, scr_x, target.rect.centery, target.death_color)
 
@@ -947,11 +1169,8 @@ class Game:
             self._draw_world(cam_x)
             if self.state == GAME_OVER:
                 self._draw_game_over()
-            elif self.state == VICTORY:
-                hi = '  NEW HI-SCORE!' if self.score >= self.hiscore else f'  Hi: {self.hiscore:,}'
-                next_lv = self.current_level + 1
-                self._draw_overlay('VICTORY!', SCORE_COL,
-                                   f'Score: {self.score:,}{hi}   — Press ENTER for Level {next_lv}!')
+            elif self.state in (VICTORY, LEVEL_END):
+                self._draw_level_end()
         pygame.display.flip()
 
     def _draw_world(self, cam_x):
@@ -965,6 +1184,15 @@ class Game:
 
         for enemy in self.enemies:
             enemy.draw(self.screen, cam_x)
+            if getattr(enemy, '_is_weak', False):
+                scr_x = enemy.rect.x - cam_x
+                scr_y = enemy.rect.y
+                pulse = abs(math.sin(pygame.time.get_ticks() * 0.008)) * 60 + 30
+                glow_surf = pygame.Surface((enemy.W + 16, enemy.H + 16), pygame.SRCALPHA)
+                glow_surf.fill((0, 0, 0, 0))
+                pygame.draw.rect(glow_surf, (255, 80, 255, int(pulse)),
+                                 (0, 0, enemy.W + 16, enemy.H + 16), 4)
+                self.screen.blit(glow_surf, (scr_x - 8, scr_y - 8))
 
         for rocket in self.rockets:
             rocket.draw(self.screen, cam_x)
@@ -1028,6 +1256,47 @@ class Game:
                     pygame.draw.polygon(self.screen, (180, 80, 80), pts)
                     pygame.draw.rect(self.screen, (200, 100, 100), (sx - 12, sy - 14, 24, 5))
 
+        # --- Hazard zones ---
+        if self._hz_zones:
+            phase    = self._hz_timer % HAZARD_ZONE_CYCLE
+            hz_act   = HAZARD_ZONE_WARN <= phase < HAZARD_ZONE_WARN + HAZARD_ZONE_ACTIVE
+            hz_warn  = phase < HAZARD_ZONE_WARN
+            # Colour by kind
+            _HZ_COLS = {
+                'acid':     (40,  200, 60),
+                'electric': (240, 220, 40),
+                'vent':     (255, 140, 20),
+                'slime':    (220, 80,  220),
+            }
+            for x1, x2, kind in self._hz_zones:
+                sx1 = x1 - cam_x
+                sx2 = x2 - cam_x
+                if sx2 < -10 or sx1 > SCREEN_W + 10:
+                    continue
+                col = _HZ_COLS.get(kind, (200, 200, 200))
+                if hz_act:
+                    # Solid active glow strip on the ground
+                    alpha = 160
+                    surf = pygame.Surface((sx2 - sx1, 10), pygame.SRCALPHA)
+                    surf.fill((*col, alpha))
+                    self.screen.blit(surf, (sx1, GROUND_Y - 4))
+                    # Animated sparks / spikes
+                    t = pygame.time.get_ticks()
+                    for xi in range(sx1 + 4, sx2, 14):
+                        h = 6 + int(4 * math.sin((t * 0.02 + xi * 0.3)))
+                        pygame.draw.line(self.screen, col, (xi, GROUND_Y - 4), (xi, GROUND_Y - 4 - h), 2)
+                elif hz_warn:
+                    # Flicker warning
+                    blink = (self._hz_timer // 8) % 2 == 0
+                    if blink:
+                        surf = pygame.Surface((sx2 - sx1, 6), pygame.SRCALPHA)
+                        surf.fill((*col, 80))
+                        self.screen.blit(surf, (sx1, GROUND_Y - 4))
+
+        # --- Destructible props ---
+        for prop in self._props:
+            prop.draw(self.screen, cam_x)
+
         for player in self.players:
             player.draw(self.screen, cam_x)
             player.draw_respawn_countdown(self.screen, cam_x)
@@ -1060,6 +1329,39 @@ class Game:
 
         ui.draw_hud(self.screen, self.players, self.score, self.enemies)
 
+        # --- Hit streak counter above each player ---
+        for i, player in enumerate(self.players):
+            if player.dead or player.out_of_lives:
+                continue
+            if i < len(self._hit_streak) and self._hit_streak[i] >= 5:
+                streak = self._hit_streak[i]
+                col = (255, 80, 0) if streak >= 15 else (255, 180, 0)
+                s_surf = self.font_med.render(f'{streak}x', True, col)
+                sx = int(player.x) - cam_x + P_W // 2
+                sy = int(player.y) - 48
+                self.screen.blit(s_surf, s_surf.get_rect(center=(sx, sy)))
+
+        # --- Berserk mode border + label ---
+        if self.berserk_mode:
+            brd = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+            pygame.draw.rect(brd, (220, 20, 20, 55), (0, 0, SCREEN_W, SCREEN_H), 8)
+            self.screen.blit(brd, (0, 0))
+            bl = self.font_float.render('BERSERK', True, (220, 40, 40))
+            self.screen.blit(bl, (SCREEN_W - bl.get_width() - 8, 6))
+
+        # --- Team Blast indicator (2-player only) ---
+        if self.num_players == 2:
+            if self._buddy_cd == 0:
+                pulse = abs(math.sin(pygame.time.get_ticks() * 0.006))
+                col = (int(200 + 55 * pulse), int(200 + 55 * pulse), 60)
+                tbl = self.font_float.render('TEAM BLAST READY  [use magic together]', True, col)
+                self.screen.blit(tbl, (SCREEN_W // 2 - tbl.get_width() // 2, SCREEN_H - 24))
+            else:
+                frac = 1.0 - self._buddy_cd / BUDDY_CD
+                bar_w = int(160 * frac)
+                pygame.draw.rect(self.screen, (60, 60, 100), (SCREEN_W // 2 - 80, SCREEN_H - 18, 160, 8))
+                pygame.draw.rect(self.screen, (140, 140, 255), (SCREEN_W // 2 - 80, SCREEN_H - 18, bar_w, 8))
+
         self._vpad.draw(self.screen)
 
         for fx, fy, text, col, life in self._float_texts:
@@ -1069,6 +1371,96 @@ class Game:
             surf  = font.render(text, True, col)
             surf.set_alpha(alpha)
             self.screen.blit(surf, (fx - surf.get_width() // 2, fy))
+
+    # ------------------------------------------------------------------ level end
+    def _draw_star(self, cx, cy, r, color):
+        pts = []
+        for i in range(5):
+            oa = math.radians(-90 + i * 72)
+            ia = math.radians(-90 + i * 72 + 36)
+            pts.append((cx + r * math.cos(oa), cy + r * math.sin(oa)))
+            pts.append((cx + r * 0.42 * math.cos(ia), cy + r * 0.42 * math.sin(ia)))
+        pygame.draw.polygon(self.screen, color, pts)
+        pygame.draw.polygon(self.screen, (0, 0, 0), pts, 1)
+
+    def _draw_level_end(self):
+        # Dark overlay over the game world
+        ov = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        ov.fill((0, 0, 0, 170))
+        self.screen.blit(ov, (0, 0))
+
+        # ---- Title ----
+        if self.current_level >= 5:
+            title_text = 'GAME COMPLETE!'
+            title_col  = (100, 255, 100)
+        else:
+            title_text = f'LEVEL {self.current_level} COMPLETE!'
+            title_col  = SCORE_COL
+        title_surf = self.font_big.render(title_text, True, title_col)
+        self.screen.blit(title_surf, title_surf.get_rect(center=(SCREEN_W // 2, 52)))
+
+        # ---- Stars ----
+        STAR_R = 28
+        star_y = 105
+        star_xs = [SCREEN_W // 2 - 70, SCREEN_W // 2, SCREEN_W // 2 + 70]
+        gold   = (255, 210, 0)
+        empty  = (55, 55, 55)
+        for i, sx in enumerate(star_xs):
+            col = gold if i < self._level_stars else empty
+            self._draw_star(sx, star_y, STAR_R, col)
+
+        # ---- Bonus lives text ----
+        bonus_y = 150
+        if self._pending_bonus_lives > 0:
+            hearts = '+' + ('♥' * self._pending_bonus_lives)
+            msg = f'{hearts}  for next level!'
+            b_surf = self.font_med.render(msg, True, (90, 255, 90))
+            self.screen.blit(b_surf, b_surf.get_rect(center=(SCREEN_W // 2, bonus_y)))
+
+        # ---- Hi-score line ----
+        hi_col = (255, 80, 80) if self.score >= self.hiscore else (180, 180, 180)
+        hi_txt = 'NEW HI-SCORE!' if self.score >= self.hiscore else f'Hi: {self.hiscore:,}'
+        hi_surf = self.font_small.render(f'Score: {self.score:,}   {hi_txt}', True, hi_col)
+        self.screen.blit(hi_surf, hi_surf.get_rect(center=(SCREEN_W // 2, 178)))
+
+        # ---- Per-player stats table ----
+        num_p      = len(self.players)
+        col_width  = SCREEN_W // (num_p + 1)
+        row_h      = 28
+        tbl_top    = 210
+        _STAT_ROWS = [
+            ('Enemies', 'kills'),
+            ('Dmg dealt', 'dmg_dealt'),
+            ('Dmg taken', 'dmg_taken'),
+            ('Specials', 'specials'),
+            ('Best streak', 'peak_streak'),
+        ]
+
+        for pi, player in enumerate(self.players):
+            px = (pi + 1) * col_width
+            char = player.char_name or f'P{player.player_id}'
+            hdr  = self.font_med.render(char.upper(), True, WHITE)
+            self.screen.blit(hdr, hdr.get_rect(center=(px, tbl_top)))
+
+        for ri, (label, key) in enumerate(_STAT_ROWS):
+            lbl_surf = self.font_small.render(label, True, (180, 180, 180))
+            self.screen.blit(lbl_surf, lbl_surf.get_rect(midright=(col_width - 8, tbl_top + row_h * (ri + 1) + 8)))
+            for pi, player in enumerate(self.players):
+                px   = (pi + 1) * col_width
+                val  = self._stats[pi][key] if pi < len(self._stats) else 0
+                vcol = WHITE if key != 'dmg_taken' else (255, 120, 120)
+                v_surf = self.font_small.render(str(val), True, vcol)
+                self.screen.blit(v_surf, v_surf.get_rect(center=(px, tbl_top + row_h * (ri + 1) + 8)))
+
+        # ---- Continue prompt ----
+        blink = (pygame.time.get_ticks() // 500) % 2 == 0
+        if blink:
+            if self.current_level >= 5:
+                prompt = 'Press ENTER to see credits'
+            else:
+                prompt = f'Press ENTER for Level {self.current_level + 1}'
+            p_surf = self.font_small.render(prompt, True, WHITE)
+            self.screen.blit(p_surf, p_surf.get_rect(center=(SCREEN_W // 2, SCREEN_H - 32)))
 
     def _draw_menu(self):
         # Lazy-load and cache the entry screen background
@@ -1116,6 +1508,16 @@ class Game:
             col = WHITE if (i < 2 or blink) else (100, 100, 100)
             t = self.font_small.render(text, True, col)
             self.screen.blit(t, t.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2 + 20 + i * 28)))
+
+        # Berserk mode toggle
+        if self.berserk_mode:
+            bk_col  = (220, 40, 40)
+            bk_text = '⚡ BERSERK MODE: ON  (B to toggle)  — x2 score, faster enemies'
+        else:
+            bk_col  = (100, 100, 100)
+            bk_text = 'Berserk Mode: OFF  (B to toggle)'
+        bk_surf = self.font_hint.render(bk_text, True, bk_col)
+        self.screen.blit(bk_surf, bk_surf.get_rect(center=(SCREEN_W // 2, SCREEN_H - 22)))
 
 
     def _draw_color_select(self):

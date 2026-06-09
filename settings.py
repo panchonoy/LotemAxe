@@ -492,6 +492,81 @@ FALL_HAZARD_WARN   = 60    # shadow frames before impact
 FALL_HAZARD_SPEED  = 4
 
 # ---------------------------------------------------------------------------
+# Destructible Props (world_x, kind) per level
+# kind: 'barrel' | 'crate' | 'vase'
+# ---------------------------------------------------------------------------
+PROPS_L1 = [
+    (850,  'crate'), (1300, 'barrel'),(1900, 'vase'),
+    (2600, 'crate'), (3300, 'barrel'),(4000, 'vase'),
+    (4900, 'barrel'),(5700, 'crate'), (6400, 'barrel'),(7100, 'vase'),
+]
+PROPS_L2 = [
+    (700,  'barrel'),(1100, 'crate'), (1800, 'vase'),
+    (2500, 'barrel'),(3100, 'crate'), (4000, 'barrel'),
+    (5000, 'vase'),  (5800, 'crate'), (6500, 'barrel'),(7000, 'vase'),
+]
+PROPS_L3 = [
+    (900,  'vase'),  (1400, 'crate'), (2100, 'barrel'),
+    (2900, 'crate'), (3600, 'barrel'),(4400, 'vase'),
+    (5200, 'barrel'),(6000, 'crate'), (6600, 'vase'), (7000, 'barrel'),
+]
+PROPS_L4 = [
+    (800,  'crate'), (1300, 'barrel'),(2000, 'vase'),
+    (2700, 'crate'), (3500, 'barrel'),(4300, 'vase'),
+    (5100, 'barrel'),(5900, 'crate'), (6700, 'vase'), (7200, 'barrel'),
+]
+PROPS_L5 = [
+    (750,  'vase'),  (1300, 'crate'), (2100, 'barrel'),
+    (2800, 'vase'),  (3600, 'crate'), (4500, 'barrel'),
+    (5300, 'vase'),  (6100, 'crate'), (6800, 'barrel'),(7200, 'vase'),
+]
+PROP_DROP_CHANCE = 0.30   # chance a broken prop drops a pickup
+
+# ---------------------------------------------------------------------------
+# Hazard Zones (x1, x2, kind) — persistent toggling floor hazards
+# kind: 'acid' (L2) | 'electric' (L3) | 'vent' (L4) | 'slime' (L5)
+# ---------------------------------------------------------------------------
+HAZARD_ZONE_WARN   = 75    # warning phase (flickering)
+HAZARD_ZONE_ACTIVE = 60    # active phase (damages player)
+HAZARD_ZONE_COOL   = 90    # clear phase (safe)
+HAZARD_ZONE_CYCLE  = 225   # WARN + ACTIVE + COOL
+HAZARD_ZONE_DMG    = 8     # HP damage per tick
+HAZARD_ZONE_TICK   = 30    # frames between damage ticks
+
+HAZARD_ZONES_L2 = [(1600, 1760, 'acid'),     (3400, 3560, 'acid'),    (5600, 5760, 'acid')]
+HAZARD_ZONES_L3 = [(1200, 1370, 'electric'), (3000, 3170, 'electric'),(5800, 5970, 'electric')]
+HAZARD_ZONES_L4 = [(1000, 1180, 'vent'),     (3600, 3780, 'vent'),    (6200, 6380, 'vent')]
+HAZARD_ZONES_L5 = [(1300, 1470, 'slime'),    (3500, 3670, 'slime'),   (5700, 5870, 'slime')]
+
+# ---------------------------------------------------------------------------
+# Buddy Special (2-player sync magic → Team Blast)
+# ---------------------------------------------------------------------------
+BUDDY_SYNC_WINDOW = 45    # frames both players must use magic within
+BUDDY_SYNC_DIST   = 300   # max px apart to trigger
+BUDDY_BLAST_DMG   = 40    # damage to all on-screen enemies
+BUDDY_BLAST_STUN  = 90    # stun frames applied to enemies
+BUDDY_INVINC      = 90    # invincibility frames for both players
+BUDDY_CD          = 600   # cooldown frames before buddy special can fire again
+
+# ---------------------------------------------------------------------------
+# Berserk Mode
+# ---------------------------------------------------------------------------
+BERSERK_SPEED_MULT   = 1.35   # enemy walk speed multiplier
+BERSERK_DMG_MULT     = 1.4    # enemy attack damage multiplier
+BERSERK_SCORE_MULT   = 2      # score multiplier for all kills
+
+# ---------------------------------------------------------------------------
+# Hit-Streak Combo Life
+# ---------------------------------------------------------------------------
+COMBO_LIFE_THRESHOLD = 20     # consecutive hits without taking damage → +1 life
+
+# ---------------------------------------------------------------------------
+# Star Rating thresholds (fraction of total max HP taken as damage)
+# ---------------------------------------------------------------------------
+STAR_3_DMG_FRAC = 0.25   # took < 25% of max HP → 3 stars
+STAR_2_DMG_FRAC = 0.65   # took < 65% of max HP → 2 stars
+
+# ---------------------------------------------------------------------------
 # Level 3 (city / skate park) colors
 # ---------------------------------------------------------------------------
 CITY_SKY_TOP   = (155, 180, 215)
