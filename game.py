@@ -7,7 +7,7 @@ import pygame
 from settings import *
 from player import Player, P1_KEYS, P2_KEYS
 from enemy import Boss, TeacherBoss, RollerBoss, RocketBoss, DoriBoss, Grunt, Heavy, Healer, Thrower, Jumper, Bomber, FlyingEye
-from particles import spawn_hit, spawn_magic, spawn_death, spawn_pee, spawn_tornado, spawn_heal, spawn_explosion
+from particles import spawn_hit, spawn_magic, spawn_death, spawn_pee, spawn_tornado, spawn_heal, spawn_explosion, spawn_lightning_chain
 from level import Level
 from pickups import Pickup
 import ui
@@ -874,20 +874,45 @@ class Game:
         spawn_pee(self.particles, cx - int(self.camera_x), cy, caster.facing)
 
     def _magic_gal(self, caster):
-        """Tornado Kick — spin-launches nearby enemies upward."""
-        cx = int(caster.x) + P_W // 2
-        cy = int(caster.y) + P_H // 2
-        for enemy in self.enemies:
-            if abs(enemy.rect.centerx - cx) < P_TORNADO_RAD:
-                kb_dir = 1 if enemy.rect.centerx >= cx else -1
-                if enemy.take_damage(P_TORNADO_DMG, kb_dir, 40):
-                    enemy.vy = P_TORNADO_LAUNCH_VY
-                    if enemy.dead:
-                        self.score += enemy.score_value
-                        scr_x = enemy.rect.centerx - int(self.camera_x)
-                        spawn_death(self.particles, scr_x, enemy.rect.centery, enemy.death_color)
+        """Chain Lightning — zaps up to 5 enemies, bolt jumps to the nearest next."""
+        cam = int(self.camera_x)
+        cx  = int(caster.x) + P_W // 2
+        cy  = int(caster.y) + P_H // 2
+
+        # Build chain: start at caster, greedily pick nearest un-hit enemy
+        remaining = [e for e in self.enemies if not e.dead]
+        chain_world  = [(cx, cy)]          # world-space positions for distance calc
+        chain_screen = [(cx - cam, cy)]    # screen-space for drawing
+
+        prev_x, prev_y = cx, cy
+        for _ in range(P_CHAIN_MAX):
+            if not remaining:
+                break
+            # Nearest enemy within range of previous node
+            candidates = [
+                e for e in remaining
+                if math.hypot(e.rect.centerx - prev_x, e.rect.centery - prev_y) <= P_CHAIN_RANGE
+            ]
+            if not candidates:
+                break
+            target = min(candidates, key=lambda e: math.hypot(
+                e.rect.centerx - prev_x, e.rect.centery - prev_y))
+            remaining.remove(target)
+
+            kb_dir = 1 if target.rect.centerx >= cx else -1
+            if target.take_damage(P_CHAIN_DMG, kb_dir, 20):
+                if target.dead:
+                    self.score += target.score_value
+                    scr_x = target.rect.centerx - cam
+                    spawn_death(self.particles, scr_x, target.rect.centery, target.death_color)
+
+            prev_x, prev_y = target.rect.centerx, target.rect.centery
+            chain_world.append((prev_x, prev_y))
+            chain_screen.append((prev_x - cam, prev_y))
+
         self.enemies = [e for e in self.enemies if not e.dead or e._die_timer > 0]
-        spawn_tornado(self.particles, cx - int(self.camera_x), cy)
+        if len(chain_screen) > 1:
+            spawn_lightning_chain(self.particles, chain_screen)
 
     def _magic_nitay(self, caster):
         """Twin Assist — ghost Gal flies across the screen dealing damage."""

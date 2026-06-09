@@ -184,6 +184,69 @@ def spawn_explosion(particles, x, y):
         ))
 
 
+class LightningBolt:
+    """Flickering zigzag bolt between two screen-space points."""
+    def __init__(self, x1, y1, x2, y2, life=18):
+        self.x1, self.y1 = float(x1), float(y1)
+        self.x2, self.y2 = float(x2), float(y2)
+        self.life     = life
+        self.max_life = life
+
+    def update(self):
+        self.life -= 1
+        return self.life > 0
+
+    def draw(self, surface, cam_x):
+        alpha = self.life / self.max_life
+        core_col = (int(200 + 55 * alpha), int(200 + 55 * alpha), 255)
+        glow_col = (int(80 * alpha),  int(120 * alpha), int(255 * alpha))
+        width    = max(1, int(3 * alpha))
+
+        dx = self.x2 - self.x1
+        dy = self.y2 - self.y1
+        length   = max(1.0, math.hypot(dx, dy))
+        num_segs = max(3, int(length / 22))
+
+        pts = [(int(self.x1), int(self.y1))]
+        for i in range(1, num_segs):
+            t    = i / num_segs
+            jitter = 14 * math.sin(t * math.pi)   # bigger wobble in middle
+            mx   = self.x1 + dx * t + random.uniform(-jitter, jitter)
+            my   = self.y1 + dy * t + random.uniform(-jitter, jitter)
+            pts.append((int(mx), int(my)))
+        pts.append((int(self.x2), int(self.y2)))
+
+        if len(pts) >= 2:
+            pygame.draw.lines(surface, glow_col, False, pts, width + 3)
+            pygame.draw.lines(surface, core_col, False, pts, width)
+
+
+def spawn_lightning_chain(particles, points):
+    """
+    points — list of (sx, sy) screen-space coords: [caster, enemy0, enemy1, ...]
+    Draws a bolt between each consecutive pair plus electric sparks at each node.
+    """
+    for i in range(len(points) - 1):
+        particles.append(LightningBolt(
+            points[i][0], points[i][1],
+            points[i+1][0], points[i+1][1],
+            life=random.randint(14, 20),
+        ))
+    # Electric sparks at each hit node (skip the caster origin)
+    for sx, sy in points[1:]:
+        for _ in range(10):
+            angle = random.uniform(0, math.pi * 2)
+            speed = random.uniform(2, 6)
+            col   = random.choice([(255, 255, 180), (180, 200, 255), WHITE])
+            particles.append(Particle(
+                sx, sy,
+                math.cos(angle) * speed,
+                math.sin(angle) * speed - 2,
+                random.randint(8, 16), col,
+                random.randint(2, 4), gravity=0.15,
+            ))
+
+
 def spawn_heal(particles, x, y):
     """Green sparkles — Healer casting a heal."""
     for _ in range(14):

@@ -205,9 +205,12 @@ P_MAGIC_DMG_ASAF    = 80
 P_PEE_RANGE         = 120    # Lotem forward stream
 P_PEE_STUN          = 90
 P_PEE_DMG           = 20
-P_TORNADO_RAD       = 150    # Gal spinning radius
+P_TORNADO_RAD       = 150    # Gal spinning radius (kept for fallback)
 P_TORNADO_DMG       = 55
-P_TORNADO_LAUNCH_VY = -8.0   # upward launch on hit
+P_TORNADO_LAUNCH_VY = -8.0
+P_CHAIN_DMG         = 32     # Gal chain lightning — damage per zap
+P_CHAIN_RANGE       = 290    # max world-px jump between enemies
+P_CHAIN_MAX         = 5      # max enemies hit in one chain
 P_TWIN_DMG          = 40     # Nitay twin assist
 P_TWIN_SPEED        = 8
 
