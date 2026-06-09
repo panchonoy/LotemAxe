@@ -157,10 +157,10 @@ class Level:
         self._torch_t = 0  # flicker timer
 
     # ------------------------------------------------------------------ spawn
-    def update(self, camera_x):
+    def update(self, camera_x, freeze_tsunami=False):
         """Return a list of new Enemy instances whose trigger has been passed."""
-        # Tsunami advance (level 3 only)
-        if self.level_num == 3:
+        # Tsunami advance (level 3 only) — paused while no player is in control
+        if self.level_num == 3 and not freeze_tsunami:
             if not self.tsunami_active:
                 self._tsunami_delay -= 1
                 if self._tsunami_delay <= 0:

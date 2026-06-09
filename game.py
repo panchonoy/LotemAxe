@@ -354,10 +354,18 @@ class Game:
         pits      = self.level.pits
         for player in self.players:
             player.handle_input(all_keys)
+            was_dead = player.dead
             player.update(int(self.camera_x), platforms, pits)
             if player.magic_just_used:
                 player.magic_just_used = False
                 self._do_magic(player)
+            # Level 3: snap respawn position ahead of tsunami so player isn't killed instantly
+            if (was_dead and not player.dead
+                    and self.current_level == 3
+                    and getattr(self.level, 'tsunami_active', False)):
+                tsw = self.level.tsunami_world_x
+                if player.x < tsw + 60:
+                    player.x = float(tsw + 60)
 
         # --- Camera: follow the leading living player ---
         living = [p for p in self.players if not p.out_of_lives and not p.dead]
@@ -374,7 +382,8 @@ class Game:
         self.camera_x = max(cam_min, min(self.camera_x, float(WORLD_W - SCREEN_W)))
 
         # --- Spawn new enemies ---
-        new_spawns = self.level.update(int(self.camera_x))
+        any_alive = any(not p.dead and not p.out_of_lives for p in self.players)
+        new_spawns = self.level.update(int(self.camera_x), freeze_tsunami=not any_alive)
         for e in new_spawns:
             if isinstance(e, Boss):
                 sfx.play('boss_roar', 1.0)
