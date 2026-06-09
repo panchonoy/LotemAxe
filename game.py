@@ -24,19 +24,17 @@ VICTORY      = 'victory'
 CREDITS      = 'credits'
 
 HISCORE_FILE  = os.path.join(os.path.dirname(__file__), 'highscore.txt')
-YAEL_FILE     = os.path.join(os.path.dirname(__file__), YAEL_UNLOCK_FILE)
+
+_yael_session = False   # True only after F6 or beating all 5 levels this session
 
 
 def _is_yael_unlocked():
-    return os.path.exists(YAEL_FILE)
+    return _yael_session
 
 
 def _unlock_yael():
-    try:
-        with open(YAEL_FILE, 'w') as f:
-            f.write('1')
-    except Exception:
-        pass
+    global _yael_session
+    _yael_session = True
 
 
 def _load_hiscore():
@@ -969,41 +967,30 @@ class Game:
         for block in self.blocks:
             block.draw(self.screen, cam_x)
 
-        # Twin assists (Nitay magic) — dark shadow racing across the ground
+        # Twin assists (Nitay magic) — ghost Gal sprinting across the screen
         for ta in self._twin_assists:
             scr_x = int(ta[0]) - cam_x
             if -80 <= scr_x <= SCREEN_W + 80:
-                # Alpha peaks in the middle of the run, fades at edges
-                t_norm = 1.0 - ta[2] / 80.0          # 0→1 over the run
+                t_norm = 1.0 - ta[2] / 80.0
                 edge_fade = 1.0 - abs(t_norm - 0.5) * 2.0
-                base_alpha = max(50, int(200 * edge_fade))
+                base_alpha = max(40, int(180 * edge_fade))
 
-                # Ground shadow: flat elongated ellipse on the floor
-                sw, sh = 58, 12
+                # Animated Gal sprite, tinted electric-purple
+                anim_tick = (80 - ta[2]) // 6
+                flip_sprite = ta[1] < 0
+                ghost = sprites.get_frame('gal', 'run', anim_tick, P_H, flip_sprite)
+                if ghost is not None:
+                    ghost = ghost.copy()
+                    # Purple-electric tint: keep blues, cut green, boost red a bit
+                    ghost.fill((210, 80, 255), special_flags=pygame.BLEND_RGB_MULT)
+                    ghost.set_alpha(base_alpha)
+                    self.screen.blit(ghost, (scr_x - ghost.get_width() // 2, GROUND_Y - P_H))
+
+                # Small purple glow on the ground
+                sw, sh = 50, 10
                 shad = pygame.Surface((sw, sh), pygame.SRCALPHA)
-                pygame.draw.ellipse(shad, (0, 0, 0, base_alpha), (0, 0, sw, sh))
-                self.screen.blit(shad, (scr_x - sw // 2, GROUND_Y + 1))
-
-                # Shadow trail (smaller ellipses behind)
-                for i in range(1, 6):
-                    tx = scr_x - int(ta[1]) * i * 13
-                    if -40 <= tx <= SCREEN_W + 40:
-                        tw = max(8, sw - i * 9)
-                        t_alpha = max(0, base_alpha - i * 32)
-                        t_surf = pygame.Surface((tw, sh), pygame.SRCALPHA)
-                        pygame.draw.ellipse(t_surf, (0, 0, 0, t_alpha), (0, 0, tw, sh))
-                        self.screen.blit(t_surf, (tx - tw // 2, GROUND_Y + 3))
-
-                # Faint silhouette above — dark shape suggesting someone running
-                sil = pygame.Surface((30, P_H), pygame.SRCALPHA)
-                sil_a = max(0, base_alpha - 80)
-                pygame.draw.circle(sil, (0, 0, 0, sil_a), (15, 11), 9)            # head
-                pygame.draw.rect(sil,   (0, 0, 0, sil_a), (7, 19, 16, P_H - 36)) # torso
-                # Animated legs — offset alternates with ta[2]
-                leg_off = 8 if (ta[2] // 5) % 2 == 0 else -8
-                pygame.draw.rect(sil, (0, 0, 0, sil_a), (6,  P_H - 26, 8, 20 + leg_off))
-                pygame.draw.rect(sil, (0, 0, 0, sil_a), (16, P_H - 26, 8, 20 - leg_off))
-                self.screen.blit(sil, (scr_x - 15, GROUND_Y - P_H))
+                pygame.draw.ellipse(shad, (180, 60, 255, base_alpha // 2), (0, 0, sw, sh))
+                self.screen.blit(shad, (scr_x - sw // 2, GROUND_Y + 2))
 
         # Falling hazards
         for hz in self._hazards:
