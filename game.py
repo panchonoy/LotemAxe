@@ -14,7 +14,7 @@ import ui
 import sfx
 import sprites
 from touch import VirtualPad
-from props import Prop
+from props import Prop, FallingBox
 
 # Game states
 MENU         = 'menu'
@@ -174,6 +174,10 @@ class Game:
         self._frame_t     = 0     # monotonic frame counter for sync detection
         self._buddy_cd    = 0     # cooldown: must reach 0 before next blast
         self._magic_frame = [-999, -999]  # frame each player last used magic
+
+        # Falling crystal boxes
+        self._fall_boxes  = []
+        self._fall_box_cd = random.randint(FBOX_CD_MIN // 2, FBOX_CD_MIN)
 
         # Background music — look for music/level{n}.mp3 / .ogg / .wav
         music_dir = os.path.join(os.path.dirname(__file__), 'music')
@@ -875,6 +879,46 @@ class Game:
                             self.pickups.append(Pickup(prop.wx, kind))
         self._props = [p for p in self._props if p.update()]
 
+        # --- Falling crystal boxes ---
+        self._fall_box_cd -= 1
+        if self._fall_box_cd <= 0:
+            self._fall_box_cd = random.randint(FBOX_CD_MIN, FBOX_CD_MAX)
+            cam_x_now = int(self.camera_x)
+            wx = cam_x_now + random.randint(60, SCREEN_W - 60)
+            wx = max(50, min(wx, WORLD_W - 50))
+            self._fall_boxes.append(FallingBox(wx))
+
+        collected_boxes = []
+        for fb in self._fall_boxes:
+            if not fb.alive:
+                continue
+            # Walk-over collection
+            for player in self.players:
+                if player.dead or player.out_of_lives:
+                    continue
+                if fb.rect.colliderect(pygame.Rect(int(player.x), int(player.y), P_W, P_H)):
+                    if fb.collect():
+                        collected_boxes.append((player, fb))
+                    break
+            # Sword-hit collection (player swing rect)
+            if fb.alive:
+                for player in self.players:
+                    atk_r = player.atk_rect
+                    if atk_r and atk_r.colliderect(fb.rect):
+                        if fb.collect():
+                            collected_boxes.append((player, fb))
+                        break
+
+        for player, fb in collected_boxes:
+            player.crystals += FBOX_CRYSTALS
+            scr_x = fb.rect.centerx - int(self.camera_x)
+            scr_y = fb.rect.top - 8
+            self._float_texts.append([scr_x, scr_y,
+                                       f'+{FBOX_CRYSTALS} crystals!', (160, 230, 255), 70])
+            sfx.play('crystal', 0.8)
+
+        self._fall_boxes = [fb for fb in self._fall_boxes if fb.update()]
+
         # --- Hazard zones (persistent cycling floor hazards) ---
         if self._hz_zones:
             self._hz_timer += 1
@@ -1282,6 +1326,10 @@ class Game:
         # --- Destructible props ---
         for prop in self._props:
             prop.draw(self.screen, cam_x)
+
+        # --- Falling crystal boxes ---
+        for fb in self._fall_boxes:
+            fb.draw(self.screen, cam_x)
 
         for player in self.players:
             player.draw(self.screen, cam_x)

@@ -491,6 +491,13 @@ FALL_HAZARD_MAX_CD = 300
 FALL_HAZARD_WARN   = 60    # shadow frames before impact
 FALL_HAZARD_SPEED  = 4
 
+# Falling crystal boxes
+FBOX_CD_MIN   = 540   # min frames between spawns (~9 s)
+FBOX_CD_MAX   = 900   # max frames between spawns (~15 s)
+FBOX_VY_INIT  = 0.5   # initial fall speed (px/frame)
+FBOX_GRAVITY  = 0.038 # acceleration per frame
+FBOX_CRYSTALS = 2     # reward on collect
+
 # ---------------------------------------------------------------------------
 # Destructible Props (world_x, kind) per level
 # kind: 'barrel' | 'crate' | 'vase'
