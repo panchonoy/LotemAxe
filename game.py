@@ -75,7 +75,7 @@ class Game:
         self.current_level = 1
         self.state       = MENU
         self._vpad       = VirtualPad()
-        self._new_game()
+        self._go_to_menu()
 
     # ------------------------------------------------------------------ setup
     def _init_fonts(self):
@@ -158,6 +158,18 @@ class Game:
             if os.path.exists(music_path):
                 sfx.play_music(music_path)
                 break
+
+    def _go_to_menu(self):
+        """Reset game state, play entry music, switch to MENU."""
+        self._new_game()
+        sfx.stop_music()
+        music_dir = os.path.join(os.path.dirname(__file__), 'music')
+        for ext in ('mp3', 'ogg', 'wav'):
+            p = os.path.join(music_dir, f'entry.{ext}')
+            if os.path.exists(p):
+                sfx.play_music(p)
+                break
+        self.state = MENU
 
     # ----------------------------------------------------------- color select
     # sprite chars use the sprite sheet; the rest are knight color palettes
@@ -261,16 +273,10 @@ class Game:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     if self.state == PLAYING:
-                        # Return to menu (saves progress for hi-score)
                         if self.score > self.hiscore:
                             self.hiscore = self.score
                             _save_hiscore(self.hiscore)
-                        sfx.stop_music()
-                        self._new_game()
-                        self.state = MENU
-                    else:
-                        self._new_game()
-                        self.state = MENU
+                    self._go_to_menu()
 
                 if self.state == MENU:
                     _LEVEL_KEYS = {
@@ -316,14 +322,10 @@ class Game:
                         self.state = PLAYING
                 elif self.state == GAME_OVER:
                     if event.key == pygame.K_RETURN:
-                        sfx.stop_music()
-                        self._new_game()
-                        self.state = MENU
+                        self._go_to_menu()
                 elif self.state == CREDITS:
                     if event.key == pygame.K_RETURN:
-                        sfx.stop_music()
-                        self._new_game()
-                        self.state = MENU
+                        self._go_to_menu()
 
             # Joystick start button
             if event.type == pygame.JOYBUTTONDOWN:
@@ -336,8 +338,7 @@ class Game:
                     self._new_game(level_num=next_level)
                     self.state = PLAYING
                 elif self.state in (GAME_OVER, CREDITS) and event.button == 9:
-                    self._new_game()
-                    self.state = MENU
+                    self._go_to_menu()
 
     # ------------------------------------------------------------------ update
     def _update(self):
