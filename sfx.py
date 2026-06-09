@@ -17,9 +17,14 @@ def init():
     try:
         pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
         _enabled = True
-        _build_all()
     except Exception:
         _enabled = False
+        return
+    # Build sounds separately — a failure here doesn't disable the mixer
+    try:
+        _build_all()
+    except Exception:
+        pass
 
 
 def _make(samples):
@@ -33,64 +38,58 @@ def _sine(freq, dur, vol=0.5, sr=44100):
     return (np.sin(2 * np.pi * freq * t) * 32767 * vol).astype(np.float32)
 
 
+def _build_one(name, fn):
+    """Build a single sound, silently skipping if it fails."""
+    try:
+        _sounds[name] = fn()
+    except Exception:
+        pass
+
+
 def _build_all():
     sr = 44100
 
-    # Sword swing — short whoosh (white noise + pitch drop)
-    dur = 0.12
-    n = int(sr * dur)
-    t = np.linspace(0, 1, n)
-    noise = np.random.uniform(-1, 1, n).astype(np.float32)
-    env = np.exp(-t * 10).astype(np.float32)
-    _sounds['swing'] = _make((noise * env * 32767 * 0.4).astype(np.float32))
+    def swing():
+        n = int(sr * 0.12); t = np.linspace(0, 1, n)
+        noise = np.random.uniform(-1, 1, n).astype(np.float32)
+        return _make((noise * np.exp(-t * 10).astype(np.float32) * 32767 * 0.4).astype(np.float32))
 
-    # Hit — short thud (low sine burst)
-    dur = 0.10
-    n = int(sr * dur)
-    t = np.linspace(0, 1, n)
-    freq = 120 - t * 80
-    wave = np.sin(2 * np.pi * np.cumsum(freq) / sr).astype(np.float32)
-    env  = np.exp(-t * 12).astype(np.float32)
-    _sounds['hit'] = _make((wave * env * 32767 * 0.7).astype(np.float32))
+    def hit():
+        n = int(sr * 0.10); t = np.linspace(0, 1, n)
+        freq = 120 - t * 80
+        wave = np.sin(2 * np.pi * np.cumsum(freq) / sr).astype(np.float32)
+        return _make((wave * np.exp(-t * 12).astype(np.float32) * 32767 * 0.7).astype(np.float32))
 
-    # Magic — ascending arpeggio
-    notes = [330, 440, 550, 660]
-    chunks = []
-    for freq in notes:
-        dur = 0.07
-        t2 = np.linspace(0, 1, int(sr * dur))
-        chunk = _sine(freq, dur, 0.35) * np.exp(-t2 * 6).astype(np.float32)
-        chunks.append(chunk)
-    arr = np.concatenate(chunks)
-    _sounds['magic'] = _make(arr)
+    def magic():
+        chunks = []
+        for f in [330, 440, 550, 660]:
+            t2 = np.linspace(0, 1, int(sr * 0.07))
+            chunks.append(_sine(f, 0.07, 0.35) * np.exp(-t2 * 6).astype(np.float32))
+        return _make(np.concatenate(chunks))
 
-    # Death — descending tone
-    dur = 0.25
-    n = int(sr * dur)
-    t = np.linspace(0, 1, n)
-    freq = 300 - t * 200
-    wave = np.sin(2 * np.pi * np.cumsum(freq) / sr).astype(np.float32)
-    env  = np.exp(-t * 5).astype(np.float32)
-    _sounds['death'] = _make((wave * env * 32767 * 0.5).astype(np.float32))
+    def death():
+        n = int(sr * 0.25); t = np.linspace(0, 1, n)
+        freq = 300 - t * 200
+        wave = np.sin(2 * np.pi * np.cumsum(freq) / sr).astype(np.float32)
+        return _make((wave * np.exp(-t * 5).astype(np.float32) * 32767 * 0.5).astype(np.float32))
 
-    # Boss roar — low rumble
-    dur = 0.55
-    n = int(sr * dur)
-    t = np.linspace(0, 1, n)
-    noise = np.random.uniform(-1, 1, n).astype(np.float32)
-    low   = _sine(60, dur, 0.5)[:n]
-    env   = (np.exp(-t * 3) * 0.7 + 0.3 * np.exp(-t * 8)).astype(np.float32)
-    _sounds['boss_roar'] = _make(((noise * 0.3 + low) * env * 32767 * 0.6).astype(np.float32))
+    def boss_roar():
+        n = int(sr * 0.55); t = np.linspace(0, 1, n)
+        noise = np.random.uniform(-1, 1, n).astype(np.float32)
+        low   = _sine(60, 0.55, 0.5)[:n]
+        env   = (np.exp(-t * 3) * 0.7 + 0.3 * np.exp(-t * 8)).astype(np.float32)
+        return _make(((noise * 0.3 + low) * env * 32767 * 0.6).astype(np.float32))
 
-    # Respawn chime — rising soft ding
-    notes2 = [523, 659, 784]
-    chunks2 = []
-    for freq in notes2:
-        dur2 = 0.09
-        t3 = np.linspace(0, 1, int(sr * dur2))
-        c = _sine(freq, dur2, 0.25) * np.exp(-t3 * 8).astype(np.float32)
-        chunks2.append(c)
-    _sounds['respawn'] = _make(np.concatenate(chunks2))
+    def respawn():
+        chunks2 = []
+        for f in [523, 659, 784]:
+            t3 = np.linspace(0, 1, int(sr * 0.09))
+            chunks2.append(_sine(f, 0.09, 0.25) * np.exp(-t3 * 8).astype(np.float32))
+        return _make(np.concatenate(chunks2))
+
+    for name, fn in [('swing', swing), ('hit', hit), ('magic', magic),
+                     ('death', death), ('boss_roar', boss_roar), ('respawn', respawn)]:
+        _build_one(name, fn)
 
 
 def play(name, volume=1.0):

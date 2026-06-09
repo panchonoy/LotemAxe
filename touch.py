@@ -20,9 +20,9 @@ _PAD_BTNS = {
 }
 
 _LABELS = {
-    'left':   '◄',   # ◄
-    'right':  '►',   # ►
-    'jump':   '▲',   # ▲
+    'left':   '<',
+    'right':  '>',
+    'jump':   '^',
     'attack': 'ATK',
     'heavy':  'HVY',
     'magic':  'MAG',

@@ -148,7 +148,7 @@ config = {
     _sdl2 : "canvas",
     user_canvas : 0,
     user_canvas_managed : 0,
-    gui_divider : 2,
+    gui_divider : 1,
     ume_block : 1,
     can_close : 0,
     archive : "lotemaxe",
@@ -228,20 +228,21 @@ function show_infobox() {
 
         /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
         canvas.emscripten {
-            border: 0px none;
+            border: 0px none !important;
             background-color: #000;
-            /* Maintain 16:9 landscape — letterbox/pillarbox as needed */
-            width: min(100vw, 177.78vh);
-            height: min(56.25vw, 100vh);
+            /* Maintain 16:9 landscape — letterbox/pillarbox as needed.
+               !important prevents pygbag window_resize() from overriding. */
+            width:  min(100vw, 177.78vh) !important;
+            height: min(56.25vw, 100vh)  !important;
             z-index: 5;
-            padding: 0;
-            margin: auto;
-            position: fixed;
-            top: 0;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            display: block;
+            padding: 0 !important;
+            margin: auto !important;
+            position: fixed !important;
+            top: 0 !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            display: block !important;
         }
 
         body {
