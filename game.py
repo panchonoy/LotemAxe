@@ -1123,7 +1123,7 @@ class Game:
         cmap   = self._COLOR_MAP
         num_p  = self.num_players
         cx_arr = getattr(self, '_color_cursor', [0, 0])
-        _SPRITE_CHARS = {'asaf', 'lotem', 'gal', 'nitay'}
+        _SPRITE_CHARS = {'asaf', 'lotem', 'gal', 'nitay', 'yael'}
         spr_tick = pygame.time.get_ticks() // (sprites.ANIM_SPEED.get('idle', 12) * 1000 // 60)
 
         n_opts  = len(opts)
