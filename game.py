@@ -484,11 +484,6 @@ class Game:
                     kb_dir = 1 if enemy.rect.centerx >= player.rect.centerx else -1
                     dmg   = player.current_atk_dmg
                     stun  = player.current_atk_stun
-                    if getattr(enemy, '_is_weak', False):
-                        dmg = int(dmg * 2.5)
-                        scr_x = atk.centerx - int(self.camera_x)
-                        self._float_texts.append([scr_x, atk.centery - 20,
-                                                  'WEAK!', (255, 80, 255), 55])
                     if enemy.take_damage(dmg, kb_dir, stun):
                         scr_x = atk.centerx - int(self.camera_x)
                         spawn_hit(self.particles, scr_x, atk.centery)
@@ -1184,15 +1179,6 @@ class Game:
 
         for enemy in self.enemies:
             enemy.draw(self.screen, cam_x)
-            if getattr(enemy, '_is_weak', False):
-                scr_x = enemy.rect.x - cam_x
-                scr_y = enemy.rect.y
-                pulse = abs(math.sin(pygame.time.get_ticks() * 0.008)) * 60 + 30
-                glow_surf = pygame.Surface((enemy.W + 16, enemy.H + 16), pygame.SRCALPHA)
-                glow_surf.fill((0, 0, 0, 0))
-                pygame.draw.rect(glow_surf, (255, 80, 255, int(pulse)),
-                                 (0, 0, enemy.W + 16, enemy.H + 16), 4)
-                self.screen.blit(glow_surf, (scr_x - 8, scr_y - 8))
 
         for rocket in self.rockets:
             rocket.draw(self.screen, cam_x)

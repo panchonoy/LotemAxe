@@ -361,11 +361,6 @@ class Boss:
         self._slam_cd       = B_SLAM_CD // 2
         self._slam_hit_set  = set()
 
-        # Weakpoint window
-        self._weak_cd    = 240   # frames until first window opens
-        self._weak_timer = 0
-        self._is_weak    = False
-
         # Mid-fight minion waves
         self.pending_wave_spawns = []   # [(world_x, kind), ...]
         self._wave_spawned       = set()
@@ -445,18 +440,6 @@ class Boss:
                     self._die_vy *= -0.2
             return
         self._eye_t += 1
-
-        # --- Weakpoint window ---
-        if self._is_weak:
-            self._weak_timer -= 1
-            if self._weak_timer <= 0:
-                self._is_weak = False
-                self._weak_cd = 360
-        elif self._weak_cd > 0:
-            self._weak_cd -= 1
-        else:
-            self._is_weak    = True
-            self._weak_timer = 150
 
         # --- Mid-fight minion waves (HP thresholds) ---
         hp_pct = self.hp / self.HP_MAX
@@ -1376,18 +1359,6 @@ class TeacherBoss(Boss):
         self.pending_hits = []
         self._eye_t += 1
 
-        # --- Weakpoint window ---
-        if self._is_weak:
-            self._weak_timer -= 1
-            if self._weak_timer <= 0:
-                self._is_weak = False
-                self._weak_cd = 360
-        elif self._weak_cd > 0:
-            self._weak_cd -= 1
-        else:
-            self._is_weak    = True
-            self._weak_timer = 150
-
         # Enter phase 2
         if not self._phase2 and self.phase2:
             self._phase2 = True
@@ -1587,18 +1558,6 @@ class RollerBoss(Boss):
             return
         self._eye_t += 1
         self._spin_angle += 0.18 * (2 if self._spin_t > 0 else 1)
-
-        # --- Weakpoint window ---
-        if self._is_weak:
-            self._weak_timer -= 1
-            if self._weak_timer <= 0:
-                self._is_weak = False
-                self._weak_cd = 360
-        elif self._weak_cd > 0:
-            self._weak_cd -= 1
-        else:
-            self._is_weak    = True
-            self._weak_timer = 150
 
         if not self._phase2 and self.phase2:
             self._phase2 = True
@@ -2114,18 +2073,6 @@ class RocketBoss(Boss):
         self.fire_text = ''
         self._eye_t += 1
 
-        # --- Weakpoint window ---
-        if self._is_weak:
-            self._weak_timer -= 1
-            if self._weak_timer <= 0:
-                self._is_weak = False
-                self._weak_cd = 360
-        elif self._weak_cd > 0:
-            self._weak_cd -= 1
-        else:
-            self._is_weak    = True
-            self._weak_timer = 150
-
         if not self._phase2 and self.phase2:
             self._phase2 = True
 
@@ -2403,18 +2350,6 @@ class DoriBoss(Boss):
         self.pending_hits   = []
         self.block_text = ''
         self._eye_t += 1
-
-        # --- Weakpoint window ---
-        if self._is_weak:
-            self._weak_timer -= 1
-            if self._weak_timer <= 0:
-                self._is_weak = False
-                self._weak_cd = 360
-        elif self._weak_cd > 0:
-            self._weak_cd -= 1
-        else:
-            self._is_weak    = True
-            self._weak_timer = 150
 
         # --- Mid-fight minion waves ---
         hp_pct = self.hp / self.HP_MAX
