@@ -8,7 +8,7 @@ _enabled = False
 def init():
     global _enabled
     try:
-        pygame.mixer.init(frequency=44100, size=-16, channels=1, buffer=512)
+        pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
         _enabled = True
         _build_all()
     except Exception:
@@ -16,8 +16,9 @@ def init():
 
 
 def _make(samples):
-    arr = np.clip(samples, -32767, 32767).astype(np.int16)
-    return pygame.sndarray.make_sound(arr)
+    mono = np.clip(samples, -32767, 32767).astype(np.int16)
+    stereo = np.column_stack([mono, mono])
+    return pygame.sndarray.make_sound(stereo)
 
 
 def _sine(freq, dur, vol=0.5, sr=44100):
