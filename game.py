@@ -183,43 +183,62 @@ class Game:
     def _handle_color_select(self, key):
         opts = self._COLOR_OPTIONS
         n = len(opts)
+        ready = getattr(self, '_p_ready', [False, False])
 
         def _advance(idx, direction, other_idx):
-            """Move idx one step; skip if it lands on other_idx."""
             idx = (idx + direction) % n
             if self.num_players == 2 and idx == other_idx:
                 idx = (idx + direction) % n
             return idx
 
-        if key in (pygame.K_LEFT, pygame.K_a):
-            self._color_cursor[0] = _advance(self._color_cursor[0], -1, self._color_cursor[1])
-            self.p1_color = opts[self._color_cursor[0]]
-        elif key in (pygame.K_RIGHT, pygame.K_d):
-            self._color_cursor[0] = _advance(self._color_cursor[0], +1, self._color_cursor[1])
-            self.p1_color = opts[self._color_cursor[0]]
-        elif self.num_players == 2:
-            if key == pygame.K_j:
+        # P1: arrow keys only — unready if they change selection
+        if key == pygame.K_LEFT:
+            if not ready[0]:
+                self._color_cursor[0] = _advance(self._color_cursor[0], -1, self._color_cursor[1])
+                self.p1_color = opts[self._color_cursor[0]]
+        elif key == pygame.K_RIGHT:
+            if not ready[0]:
+                self._color_cursor[0] = _advance(self._color_cursor[0], +1, self._color_cursor[1])
+                self.p1_color = opts[self._color_cursor[0]]
+
+        # P2: A/D keys only
+        elif self.num_players == 2 and key == pygame.K_a:
+            if not ready[1]:
                 self._color_cursor[1] = _advance(self._color_cursor[1], -1, self._color_cursor[0])
                 self.p2_color = opts[self._color_cursor[1]]
-            elif key == pygame.K_l:
+        elif self.num_players == 2 and key == pygame.K_d:
+            if not ready[1]:
                 self._color_cursor[1] = _advance(self._color_cursor[1], +1, self._color_cursor[0])
                 self.p2_color = opts[self._color_cursor[1]]
 
+        # F6 Yael unlock (secret)
         if key == pygame.K_F6:
             _unlock_yael()
-            opts = self._COLOR_OPTIONS  # re-fetch — may now include yael
+            opts = self._COLOR_OPTIONS
             n = len(opts)
             if 'yael' in opts:
                 yi = opts.index('yael')
                 self._color_cursor[0] = yi
                 self.p1_color = 'yael'
+                ready[0] = False
                 if self.num_players == 2 and self._color_cursor[1] == yi:
                     self._color_cursor[1] = (yi + 1) % n
                     self.p2_color = opts[self._color_cursor[1]]
 
+        # Confirm: P1 = ENTER, P2 = W
         if key == pygame.K_RETURN:
+            ready[0] = True
+        if self.num_players == 2 and key == pygame.K_w:
+            ready[1] = True
+
+        self._p_ready = ready
+
+        # Start when all required players are ready
+        needed = self.num_players
+        if sum(ready[:needed]) == needed:
             lv = getattr(self, '_start_level', 1)
             self._start_level = 1
+            self._p_ready = [False, False]
             self._new_game(level_num=lv)
             self.state = PLAYING
 
@@ -266,6 +285,7 @@ class Game:
                         opts = self._COLOR_OPTIONS
                         self._color_cursor = [opts.index(self.p1_color),
                                               opts.index(self.p2_color)]
+                        self._p_ready = [False, False]
                         self.state = COLOR_SELECT
                     elif event.key == pygame.K_1:
                         self.num_players = 1
@@ -274,6 +294,7 @@ class Game:
                         opts = self._COLOR_OPTIONS
                         self._color_cursor = [opts.index(self.p1_color),
                                               opts.index(self.p2_color)]
+                        self._p_ready = [False, False]
                         self.state = COLOR_SELECT
                     elif event.key in (pygame.K_2, pygame.K_RETURN):
                         self.num_players = 1 if event.key == pygame.K_RETURN else 2
@@ -282,6 +303,7 @@ class Game:
                         opts = self._COLOR_OPTIONS
                         self._color_cursor = [opts.index(self.p1_color),
                                               opts.index(self.p2_color)]
+                        self._p_ready = [False, False]
                         self.state = COLOR_SELECT
 
                 elif self.state == COLOR_SELECT:
@@ -1104,24 +1126,28 @@ class Game:
         spacing  = min(90, (avail_w - 60) // n_opts)
         r        = min(30, spacing // 2 - 2)
 
+        ready  = getattr(self, '_p_ready', [False, False])
+        p_keys = ['← → then ENTER', 'A  D  then W']
+
         for pi in range(num_p):
-            label  = f'P{pi + 1}  ←/→' if pi == 0 else 'P2  J/L'
-            # Center in the player's available zone
+            is_ready = ready[pi]
+            col    = (80, 220, 80) if is_ready else WHITE
+            status = '  READY!' if is_ready else f'  {p_keys[pi]}'
+            label  = f'P{pi + 1}{status}'
             if num_p == 1:
                 base_x = SCREEN_W // 2
             else:
                 base_x = SCREEN_W // 4 + pi * SCREEN_W // 2
-            lbl = self.font_med.render(label, True, WHITE)
+            lbl = self.font_med.render(label, True, col)
             self.screen.blit(lbl, lbl.get_rect(center=(base_x, 130)))
 
-            sel    = cx_arr[pi]
+            sel = cx_arr[pi]
             for i, name in enumerate(opts):
                 bx = base_x - (n_opts // 2) * spacing + i * spacing + spacing // 2
                 by = 220
                 is_sel = (i == sel)
 
                 if name in _SPRITE_CHARS and sprites.is_ready():
-                    # Show sprite idle frame as thumbnail
                     n_frames = sprites.frame_count(name, 'idle')
                     fidx = spr_tick % max(1, n_frames)
                     thumb = sprites.get_frame(name, 'idle', fidx, r * 2)
@@ -1136,14 +1162,10 @@ class Game:
                     pygame.draw.circle(self.screen, body, (bx, by), r)
 
                 if is_sel:
-                    pygame.draw.circle(self.screen, WHITE, (bx, by), r + 5, 3)
-                    n_surf = self.font_small.render(name.upper(), True, WHITE)
+                    ring_col = (80, 220, 80) if is_ready else WHITE
+                    pygame.draw.circle(self.screen, ring_col, (bx, by), r + 5, 3)
+                    n_surf = self.font_small.render(name.upper(), True, ring_col)
                     self.screen.blit(n_surf, n_surf.get_rect(center=(bx, by + r + 18)))
-
-        hint = self.font_small.render('Press ENTER to start', True, WHITE)
-        blink = (pygame.time.get_ticks() // 520) % 2 == 0
-        if blink:
-            self.screen.blit(hint, hint.get_rect(center=(SCREEN_W // 2, SCREEN_H - 110)))
 
     def _draw_credits(self):
         self.screen.fill((8, 5, 18))
