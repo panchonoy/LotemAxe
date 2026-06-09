@@ -1288,7 +1288,7 @@ class TeacherBoss(Boss):
         super().__init__(x, y)
         self._chalk = []          # [wx, wy, vx, alive]
         self.pending_hits = []    # processed by game.py
-        self._chalk_cd = TB_CHALK_CD // 2
+        self._chalk_cd = TB_CHALK_CD
         self._rein_cd  = TB_REIN_CD
         self.pending_spawns = []  # list of world_x values for grunt spawns
         self.swing_text = ''      # 'SILENCE!' — read once by game.py
