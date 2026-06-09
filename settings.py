@@ -321,7 +321,7 @@ LAVA_DMG      = 15   # HP removed per tick
 LAVA_INTERVAL = 45   # frames between lava damage ticks (~0.75 s)
 
 # --- Tsunami (Level 3) ---
-TSUNAMI_SPEED    = 0.8   # world-px per frame the wave advances
+TSUNAMI_SPEED    = 1.6   # world-px per frame the wave advances
 TSUNAMI_DMG      = 15    # HP removed per tick when caught in the wave
 TSUNAMI_INTERVAL = 40    # frames between tsunami damage ticks
 TSUNAMI_DELAY    = 360   # frames grace period before wave starts moving (~6 s)
