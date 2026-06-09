@@ -92,3 +92,23 @@ def play(name, volume=1.0):
     if s:
         s.set_volume(min(1.0, volume))
         s.play()
+
+
+def play_music(path, volume=0.65, loops=-1):
+    """Start looping background music from a file path (mp3/ogg/wav)."""
+    if not _enabled:
+        return
+    try:
+        pygame.mixer.music.load(path)
+        pygame.mixer.music.set_volume(volume)
+        pygame.mixer.music.play(loops)
+    except Exception:
+        pass
+
+
+def stop_music():
+    """Stop any currently-playing background music."""
+    try:
+        pygame.mixer.music.stop()
+    except Exception:
+        pass

@@ -6,13 +6,14 @@ import pygame
 
 from settings import *
 from player import Player, P1_KEYS, P2_KEYS
-from enemy import Boss, TeacherBoss, RollerBoss, Grunt, Heavy, Healer, Thrower, Jumper
-from particles import spawn_hit, spawn_magic, spawn_death, spawn_pee, spawn_tornado, spawn_heal
+from enemy import Boss, TeacherBoss, RollerBoss, RocketBoss, DoriBoss, Grunt, Heavy, Healer, Thrower, Jumper, Bomber, FlyingEye
+from particles import spawn_hit, spawn_magic, spawn_death, spawn_pee, spawn_tornado, spawn_heal, spawn_explosion
 from level import Level
 from pickups import Pickup
 import ui
 import sfx
 import sprites
+from touch import VirtualPad
 
 # Game states
 MENU         = 'menu'
@@ -73,6 +74,7 @@ class Game:
         self.num_players = 1
         self.current_level = 1
         self.state       = MENU
+        self._vpad       = VirtualPad()
         self._new_game()
 
     # ------------------------------------------------------------------ setup
@@ -86,26 +88,22 @@ class Game:
         self.font_gameover = pygame.font.SysFont('Arial', 28, bold=True)
 
     def _new_game(self, level_num=1):
+        # Preserve crystal counts when advancing levels (not on fresh start)
+        _saved_crystals = [p.crystals for p in getattr(self, 'players', [])] if level_num > 1 else []
+
         self.current_level = level_num
         joy2 = self._joysticks[0] if self._joysticks else None
 
         c1 = getattr(self, 'p1_color', 'asaf'  if sprites.is_ready() else 'blue')
         c2 = getattr(self, 'p2_color', 'lotem' if sprites.is_ready() else 'red')
 
-        _SPRITE_CHARS = {'asaf', 'lotem', 'gal', 'nitay'}
-        _NAMED_CHARS  = {'yael'}   # have char_name but no sprite sheet
+        _SPRITE_CHARS = {'asaf', 'lotem', 'gal', 'nitay', 'yael'}
 
         def _make_player(x, pid, keys, color, joy=None):
             if color in _SPRITE_CHARS:
                 return Player(x, GROUND_Y - P_H, player_id=pid,
                               key_bindings=keys, joystick=joy,
                               sprite_char=color)
-            if color in _NAMED_CHARS:
-                # Named chars have logic (stats/weapons) but no sprite sheet
-                return Player(x, GROUND_Y - P_H, player_id=pid,
-                              key_bindings=keys, joystick=joy,
-                              color=color, sprite_char=None,
-                              _char_name_override=color)
             return Player(x, GROUND_Y - P_H, player_id=pid,
                           key_bindings=keys, joystick=joy, color=color)
 
@@ -113,18 +111,27 @@ class Game:
         if self.num_players == 2:
             self.players.append(_make_player(260, 2, P2_KEYS, c2, joy=joy2))
 
+        # Restore crystal counts from previous level
+        for i, p in enumerate(self.players):
+            if i < len(_saved_crystals):
+                p.crystals = _saved_crystals[i]
+
         self.enemies   = []
         self.particles = []
         self.camera_x  = 0.0
         self.score     = 0
-        self.level     = Level(level_num)
+        self.level     = Level(level_num, num_players=self.num_players)
 
         if level_num == 1:
             pickup_data = PICKUPS_L1
         elif level_num == 2:
             pickup_data = PICKUPS_L2
-        else:
+        elif level_num == 3:
             pickup_data = PICKUPS_L3
+        elif level_num == 4:
+            pickup_data = PICKUPS_L4
+        else:
+            pickup_data = PICKUPS_L5
         self.pickups = [Pickup(wx, kind) for wx, kind in pickup_data]
         self._float_texts = []   # [(screen_x, screen_y, text, color, frames_left)]
 
@@ -135,10 +142,22 @@ class Game:
         self._gameover_line_idx = random.randint(0, len(self._GAMEOVER_LINES) - 1)
         self._twin_assists      = []  # [[world_x, direction, frames_left, hit_set]]
         self._lava_timers       = {}  # {player_index: frames_in_lava}
+        self._tsunami_timers    = {}  # {player_index: frames_in_tsunami}
 
         # Falling hazards (active during boss fights from level 2+)
         self._hazards   = []  # [[world_x, y, vy, warn_t, type_idx]]
         self._hazard_cd = random.randint(FALL_HAZARD_MIN_CD, FALL_HAZARD_MAX_CD)
+        self.rockets    = []  # live Rocket objects from RocketBoss
+        self.blocks     = []  # live ToyBlock objects from DoriBoss
+
+        # Background music — look for music/level{n}.mp3 / .ogg / .wav
+        music_dir = os.path.join(os.path.dirname(__file__), 'music')
+        sfx.stop_music()
+        for ext in ('mp3', 'ogg', 'wav'):
+            music_path = os.path.join(music_dir, f'level{level_num}.{ext}')
+            if os.path.exists(music_path):
+                sfx.play_music(music_path)
+                break
 
     # ----------------------------------------------------------- color select
     # sprite chars use the sprite sheet; the rest are knight color palettes
@@ -163,21 +182,45 @@ class Game:
 
     def _handle_color_select(self, key):
         opts = self._COLOR_OPTIONS
+        n = len(opts)
+
+        def _advance(idx, direction, other_idx):
+            """Move idx one step; skip if it lands on other_idx."""
+            idx = (idx + direction) % n
+            if self.num_players == 2 and idx == other_idx:
+                idx = (idx + direction) % n
+            return idx
+
         if key in (pygame.K_LEFT, pygame.K_a):
-            self._color_cursor[0] = (self._color_cursor[0] - 1) % len(opts)
+            self._color_cursor[0] = _advance(self._color_cursor[0], -1, self._color_cursor[1])
             self.p1_color = opts[self._color_cursor[0]]
         elif key in (pygame.K_RIGHT, pygame.K_d):
-            self._color_cursor[0] = (self._color_cursor[0] + 1) % len(opts)
+            self._color_cursor[0] = _advance(self._color_cursor[0], +1, self._color_cursor[1])
             self.p1_color = opts[self._color_cursor[0]]
         elif self.num_players == 2:
             if key == pygame.K_j:
-                self._color_cursor[1] = (self._color_cursor[1] - 1) % len(opts)
+                self._color_cursor[1] = _advance(self._color_cursor[1], -1, self._color_cursor[0])
                 self.p2_color = opts[self._color_cursor[1]]
             elif key == pygame.K_l:
-                self._color_cursor[1] = (self._color_cursor[1] + 1) % len(opts)
+                self._color_cursor[1] = _advance(self._color_cursor[1], +1, self._color_cursor[0])
                 self.p2_color = opts[self._color_cursor[1]]
+
+        if key == pygame.K_F6:
+            _unlock_yael()
+            opts = self._COLOR_OPTIONS  # re-fetch — may now include yael
+            n = len(opts)
+            if 'yael' in opts:
+                yi = opts.index('yael')
+                self._color_cursor[0] = yi
+                self.p1_color = 'yael'
+                if self.num_players == 2 and self._color_cursor[1] == yi:
+                    self._color_cursor[1] = (yi + 1) % n
+                    self.p2_color = opts[self._color_cursor[1]]
+
         if key == pygame.K_RETURN:
-            self._new_game()
+            lv = getattr(self, '_start_level', 1)
+            self._start_level = 1
+            self._new_game(level_num=lv)
             self.state = PLAYING
 
     # ------------------------------------------------------------------ run
@@ -192,8 +235,10 @@ class Game:
     # ------------------------------------------------------------------ events
     def _handle_events(self):
         for event in pygame.event.get():
+            self._vpad.handle_event(event)   # touch / mouse → virtual pad
             if event.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
+                pygame.quit()
+                raise SystemExit
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     if self.state == PLAYING:
@@ -201,13 +246,28 @@ class Game:
                         if self.score > self.hiscore:
                             self.hiscore = self.score
                             _save_hiscore(self.hiscore)
+                        sfx.stop_music()
                         self._new_game()
                         self.state = MENU
                     else:
-                        pygame.quit(); sys.exit()
+                        self._new_game()
+                        self.state = MENU
 
                 if self.state == MENU:
-                    if event.key == pygame.K_1:
+                    _LEVEL_KEYS = {
+                        pygame.K_F1: 1, pygame.K_F2: 2, pygame.K_F3: 3,
+                        pygame.K_F4: 4, pygame.K_F5: 5,
+                    }
+                    if event.key in _LEVEL_KEYS:
+                        self._start_level = _LEVEL_KEYS[event.key]
+                        self.num_players = 1
+                        self.p1_color = 'asaf'  if sprites.is_ready() else 'blue'
+                        self.p2_color = 'lotem' if sprites.is_ready() else 'red'
+                        opts = self._COLOR_OPTIONS
+                        self._color_cursor = [opts.index(self.p1_color),
+                                              opts.index(self.p2_color)]
+                        self.state = COLOR_SELECT
+                    elif event.key == pygame.K_1:
                         self.num_players = 1
                         self.p1_color = 'asaf'  if sprites.is_ready() else 'blue'
                         self.p2_color = 'lotem' if sprites.is_ready() else 'red'
@@ -234,10 +294,12 @@ class Game:
                         self.state = PLAYING
                 elif self.state == GAME_OVER:
                     if event.key == pygame.K_RETURN:
+                        sfx.stop_music()
                         self._new_game()
                         self.state = MENU
                 elif self.state == CREDITS:
                     if event.key == pygame.K_RETURN:
+                        sfx.stop_music()
                         self._new_game()
                         self.state = MENU
 
@@ -263,6 +325,9 @@ class Game:
 
         all_keys = pygame.key.get_pressed()
 
+        # Feed touch controls into P1's virtual input
+        self.players[0].virtual_input = self._vpad.get_state()
+
         # --- Player input ---
         platforms = self.level.platforms
         pits      = self.level.pits
@@ -280,13 +345,25 @@ class Game:
         lead_x = max(p.x for p in living)
         target_x = lead_x - CAM_LEAD
         self.camera_x += (target_x - self.camera_x) * 0.14
-        self.camera_x = max(0.0, min(self.camera_x, float(WORLD_W - SCREEN_W)))
+        # Tsunami camera-minimum: wave forces the viewport forward
+        if self.current_level == 3 and getattr(self.level, 'tsunami_active', False):
+            cam_min = max(0.0, self.level.tsunami_world_x - TSUNAMI_CAM_GAP)
+        else:
+            cam_min = 0.0
+        self.camera_x = max(cam_min, min(self.camera_x, float(WORLD_W - SCREEN_W)))
 
         # --- Spawn new enemies ---
         new_spawns = self.level.update(int(self.camera_x))
         for e in new_spawns:
             if isinstance(e, Boss):
                 sfx.play('boss_roar', 1.0)
+                music_dir = os.path.join(os.path.dirname(__file__), 'music')
+                sfx.stop_music()
+                for ext in ('mp3', 'ogg', 'wav'):
+                    boss_path = os.path.join(music_dir, f'boss.{ext}')
+                    if os.path.exists(boss_path):
+                        sfx.play_music(boss_path)
+                        break
         self.enemies.extend(new_spawns)
 
         # Swarm warning flash
@@ -337,10 +414,102 @@ class Game:
                             sfx.play('death', 0.5)
 
         for e in dead_this_frame:
+            if isinstance(e, Bomber):
+                continue   # death FX fires when fuse burns (handled below)
             scr_x = e.rect.centerx - int(self.camera_x)
             spawn_death(self.particles, scr_x, e.rect.centery, e.death_color)
 
+        # Bomber explosions: fires after fuse countdown
+        for enemy in self.enemies:
+            if isinstance(enemy, Bomber) and enemy.pending_explosion:
+                enemy.pending_explosion = False
+                ecx = enemy.rect.centerx
+                scr_x = ecx - int(self.camera_x)
+                spawn_explosion(self.particles, scr_x, int(enemy.y + enemy.H // 2))
+                self._shake = max(self._shake, 12.0)
+                self._magic_flash = max(self._magic_flash, 12)
+                for player in self.players:
+                    if player.dead or player.out_of_lives:
+                        continue
+                    if abs(player.rect.centerx - ecx) < BOMBER_RADIUS:
+                        player.take_damage(BOMBER_EXPL_DMG)
+                # Splash damage to nearby minions (excludes bosses + the bomber itself)
+                for other in self.enemies:
+                    if other is enemy or other.dead:
+                        continue
+                    if isinstance(other, (Boss, TeacherBoss, RollerBoss, RocketBoss, DoriBoss)):
+                        continue
+                    if abs(other.rect.centerx - ecx) < BOMBER_RADIUS:
+                        other.take_damage(BOMBER_EXPL_DMG // 2)
+                scr_x_int = scr_x
+                self._float_texts.append([scr_x_int, int(enemy.y) - 10,
+                                          'BOOM!', (255, 120, 0), 40])
+
         self.enemies = [e for e in self.enemies if not e.dead or e._die_timer > 0]
+
+        # --- RocketBoss rockets ---
+        for enemy in self.enemies:
+            if isinstance(enemy, RocketBoss):
+                if enemy.pending_rockets:
+                    self.rockets.extend(enemy.pending_rockets)
+                    enemy.pending_rockets = []
+                if enemy.fire_text:
+                    scr_x = enemy.rect.centerx - int(self.camera_x)
+                    self._float_texts.append([scr_x, int(enemy.y) - 14,
+                                              enemy.fire_text, (255, 100, 20), 45])
+                    enemy.fire_text = ''
+
+        live_rockets = []
+        for rocket in self.rockets:
+            rocket.update()
+            if not rocket.alive:
+                continue
+            hit = False
+            for player in self.players:
+                if player.dead or player.out_of_lives or player.hurt_timer > 0:
+                    continue
+                if rocket.rect.colliderect(player.rect):
+                    if player.take_damage(rocket.dmg):
+                        self._shake = max(self._shake, 8.0)
+                    scr_x = rocket.rect.centerx - int(self.camera_x)
+                    spawn_explosion(self.particles, scr_x, rocket.rect.centery)
+                    hit = True
+                    break
+            if not hit:
+                live_rockets.append(rocket)
+        self.rockets = live_rockets
+
+        # --- DoriBoss toy blocks ---
+        for enemy in self.enemies:
+            if isinstance(enemy, DoriBoss):
+                if enemy.pending_blocks:
+                    self.blocks.extend(enemy.pending_blocks)
+                    enemy.pending_blocks = []
+                if enemy.block_text:
+                    scr_x = enemy.rect.centerx - int(self.camera_x)
+                    self._float_texts.append([scr_x, int(enemy.y) - 14,
+                                              enemy.block_text, (238, 202, 45), 50])
+                    enemy.block_text = ''
+
+        live_blocks = []
+        for block in self.blocks:
+            block.update()
+            if not block.alive:
+                continue
+            hit = False
+            for player in self.players:
+                if player.dead or player.out_of_lives or player.hurt_timer > 0:
+                    continue
+                if block.rect.colliderect(player.rect):
+                    if player.take_damage(block.dmg):
+                        self._shake = max(self._shake, 6.0)
+                    scr_x = block.rect.centerx - int(self.camera_x)
+                    spawn_hit(self.particles, scr_x, block.rect.centery)
+                    hit = True
+                    break
+            if not hit:
+                live_blocks.append(block)
+        self.blocks = live_blocks
 
         # --- Projectile hits (Thrower + TeacherBoss chalk) ---
         for enemy in self.enemies:
@@ -402,58 +571,50 @@ class Game:
                     player.take_damage(30)  # damage attempt (blocked by hurt_timer = intentional)
 
             # --- Pit avoidance AI ---
+            # Runs every frame: hard-walls enemies out of the pit, no intentional fall-ins
+            GUARD = 22   # px before pit edge to start blocking
             for enemy in self.enemies:
                 if enemy.dead or not enemy.on_ground:
                     continue
-                if isinstance(enemy, (Boss, TeacherBoss, RollerBoss)):
-                    continue
-                if getattr(enemy, '_pit_avoid_cd', 0) > 0:
+                if isinstance(enemy, (Boss, TeacherBoss, RollerBoss, RocketBoss, DoriBoss, FlyingEye)):
                     continue
                 ecx = enemy.rect.centerx
-                if not (pit_x1 <= ecx <= pit_x2):
+                if not (pit_x1 - GUARD <= ecx <= pit_x2 + GUARD):
                     continue
 
                 closer_to_left = (ecx - pit_x1) < (pit_x2 - ecx)
-                toward_pit = 1 if closer_to_left else -1  # direction enemy was moving
+                toward_pit = 1 if closer_to_left else -1
 
-                if isinstance(enemy, Jumper):
-                    # Jumpers always jump over pits
-                    enemy.x  = float(pit_x1 - enemy.W) if closer_to_left else float(pit_x2 + 1)
-                    enemy.vy = JP_LEAP_VY
-                    enemy.on_ground = False
-                    enemy.vx = float(toward_pit) * max(abs(enemy.vx) if enemy.vx else 1.0,
-                                                        enemy.SPEED * 2.5)
-                    enemy._pit_avoid_cd = 50
-                elif isinstance(enemy, (Thrower, Healer)):
-                    # Always turn around
-                    enemy.x  = float(pit_x1 - enemy.W) if closer_to_left else float(pit_x2 + 1)
+                # Hard reposition if inside kill zone (safety net)
+                if pit_x1 <= ecx <= pit_x2:
+                    enemy.x = float(pit_x1 - enemy.W) if closer_to_left else float(pit_x2 + 1)
                     enemy.vx = -float(toward_pit) * enemy.SPEED
                     enemy.facing = 1 if enemy.vx > 0 else -1
-                    enemy._pit_avoid_cd = 70
-                elif isinstance(enemy, Heavy):
-                    pers = id(enemy) % 10
-                    if pers < 7:  # 70%: turn around
-                        enemy.x  = float(pit_x1 - enemy.W) if closer_to_left else float(pit_x2 + 1)
-                        enemy.vx = -float(toward_pit) * enemy.SPEED * 0.8
-                        enemy.facing = 1 if enemy.vx > 0 else -1
-                        enemy._pit_avoid_cd = 60
-                    # else 30%: fall in — no push-back, death check will handle it
-                else:  # Grunt
-                    pers = id(enemy) % 10
-                    if pers < 5:  # 50%: stop at edge
-                        enemy.x  = float(pit_x1 - enemy.W) if closer_to_left else float(pit_x2 + 1)
-                        enemy.vx = 0.0
-                        enemy._pit_avoid_cd = 55
-                    elif pers < 8:  # 30%: turn around
-                        enemy.x  = float(pit_x1 - enemy.W) if closer_to_left else float(pit_x2 + 1)
-                        enemy.vx = -float(toward_pit) * enemy.SPEED
-                        enemy.facing = 1 if enemy.vx > 0 else -1
-                        enemy._pit_avoid_cd = 65
-                    # else 20%: fall in
+
+                # Block forward movement toward the pit every frame
+                elif ecx < pit_x1 and enemy.vx > 0:
+                    enemy.x  = float(pit_x1 - enemy.W)
+                    enemy.vx = 0.0
+                elif ecx > pit_x2 and enemy.vx < 0:
+                    enemy.x  = float(pit_x2 + 1)
+                    enemy.vx = 0.0
+                else:
+                    continue   # inside guard zone but moving away — nothing to do
+
+                # Jumpers jump across (cooldown prevents repeated triggering)
+                if isinstance(enemy, Jumper) and getattr(enemy, '_pit_avoid_cd', 0) == 0:
+                    enemy.vy = JP_LEAP_VY
+                    enemy.on_ground = False
+                    enemy._is_leaping = True
+                    enemy.vx = float(toward_pit) * max(abs(enemy.vx) if enemy.vx else 1.0,
+                                                        enemy.SPEED * 2.5)
+                    enemy._pit_avoid_cd = 55
 
             # Enemies: die immediately when they walk into the pit
             for enemy in self.enemies:
                 if not enemy.dead and enemy.on_ground:
+                    if isinstance(enemy, (Boss, TeacherBoss, RollerBoss, RocketBoss, DoriBoss, FlyingEye)):
+                        continue
                     ecx = enemy.rect.centerx
                     if pit_x1 <= ecx <= pit_x2:
                         pit_cx = (pit_x1 + pit_x2) // 2
@@ -467,8 +628,8 @@ class Game:
                                     enemy.death_color)
 
         # --- Lava: enemy avoidance + typed damage ---
-        # Heavy and Healer are immune; others take slow damage and avoid the edge
-        _LAVA_IMMUNE = (Heavy, Healer)
+        # Heavy, Healer, and FlyingEye are immune; others take slow damage and avoid the edge
+        _LAVA_IMMUNE = (Heavy, Healer, FlyingEye)
         for lx1, lx2 in self.level.lava:
             for enemy in self.enemies:
                 if enemy.dead:
@@ -477,7 +638,7 @@ class Game:
                     continue  # immune — walk right through
                 ecx = enemy.rect.centerx
                 # Smart avoidance: stop 12px before the lava edge
-                if enemy.on_ground and not isinstance(enemy, (Boss, TeacherBoss, RollerBoss)):
+                if enemy.on_ground and not isinstance(enemy, (Boss, TeacherBoss, RollerBoss, RocketBoss, DoriBoss)):
                     if enemy.vx > 0 and lx1 - 12 < ecx < lx1 + 8:
                         enemy.vx = 0.0  # halt before left edge
                     elif enemy.vx < 0 and lx2 - 8 < ecx < lx2 + 12:
@@ -503,21 +664,38 @@ class Game:
                     self._lava_timers.pop(id(enemy), None)
 
         # --- Lava damage to players ---
-        for lx1, lx2 in self.level.lava:
+        for i, player in enumerate(self.players):
+            if player.dead or player.out_of_lives:
+                continue
+            pcx = int(player.x) + P_W // 2
+            in_lava = player.on_ground and any(lx1 <= pcx <= lx2 for lx1, lx2 in self.level.lava)
+            if in_lava:
+                self._lava_timers[i] = self._lava_timers.get(i, 0) + 1
+                if self._lava_timers[i] >= LAVA_INTERVAL:
+                    self._lava_timers[i] = 0
+                    player.hp = max(0, player.hp - LAVA_DMG)
+                    self._shake = max(self._shake, 2.0)
+                    if player.hp == 0 and not player.dead:
+                        player._die()
+            else:
+                self._lava_timers[i] = 0
+
+        # --- Tsunami damage to players (Level 3) ---
+        if self.current_level == 3 and getattr(self.level, 'tsunami_active', False):
+            tsw = self.level.tsunami_world_x
             for i, player in enumerate(self.players):
                 if player.dead or player.out_of_lives:
                     continue
-                pcx = int(player.x) + P_W // 2
-                if lx1 <= pcx <= lx2 and player.on_ground:
-                    self._lava_timers[i] = self._lava_timers.get(i, 0) + 1
-                    if self._lava_timers[i] >= LAVA_INTERVAL:
-                        self._lava_timers[i] = 0
-                        player.hp = max(0, player.hp - LAVA_DMG)
-                        self._shake = max(self._shake, 2.0)
+                if player.x < tsw:
+                    self._tsunami_timers[i] = self._tsunami_timers.get(i, 0) + 1
+                    if self._tsunami_timers[i] >= TSUNAMI_INTERVAL:
+                        self._tsunami_timers[i] = 0
+                        player.hp = max(0, player.hp - TSUNAMI_DMG)
+                        self._shake = max(self._shake, 3.0)
                         if player.hp == 0 and not player.dead:
                             player._die()
                 else:
-                    self._lava_timers[i] = 0
+                    self._tsunami_timers[i] = 0
 
         # --- Healer ally healing ---
         for enemy in self.enemies:
@@ -611,7 +789,7 @@ class Game:
 
         # --- Win/Lose ---
         boss_dead = self.level.boss_triggered and not any(
-            isinstance(e, (Boss, TeacherBoss, RollerBoss)) and not e.dead
+            isinstance(e, (Boss, TeacherBoss, RollerBoss, RocketBoss, DoriBoss)) and not e.dead
             for e in self.enemies
         )
         if boss_dead:
@@ -620,12 +798,10 @@ class Game:
                 if self.score > self.hiscore:
                     self.hiscore = self.score
                     _save_hiscore(self.hiscore)
-                if self.current_level == 1:
-                    self.state = VICTORY          # → level 2
-                elif self.current_level == 2:
-                    self.state = VICTORY          # → level 3
+                if self.current_level < 5:
+                    self.state = VICTORY          # → next level
                 else:
-                    _unlock_yael()               # beat all 3 levels!
+                    _unlock_yael()               # beat all 5 levels!
                     self.state = CREDITS
 
         all_out = all(p.out_of_lives for p in self.players)
@@ -739,21 +915,47 @@ class Game:
         for enemy in self.enemies:
             enemy.draw(self.screen, cam_x)
 
-        # Twin assists (Nitay magic) — ghost Gal sprinting across
+        for rocket in self.rockets:
+            rocket.draw(self.screen, cam_x)
+
+        for block in self.blocks:
+            block.draw(self.screen, cam_x)
+
+        # Twin assists (Nitay magic) — dark shadow racing across the ground
         for ta in self._twin_assists:
             scr_x = int(ta[0]) - cam_x
-            if -40 <= scr_x <= SCREEN_W + 40:
-                gal_body = (40, 35, 55)
-                gal_head = (60, 55, 75)
-                pygame.draw.rect(self.screen, gal_body, (scr_x - 12, GROUND_Y - P_H, 24, P_H))
-                pygame.draw.circle(self.screen, gal_head, (scr_x, GROUND_Y - P_H + 12), 10)
-                for i in range(1, 5):
-                    tx = scr_x - int(ta[1]) * i * 10
-                    if 0 <= tx <= SCREEN_W:
-                        fade = max(0, 110 - i * 25)
-                        trail = pygame.Surface((20, P_H - 10), pygame.SRCALPHA)
-                        trail.fill((gal_body[0], gal_body[1], gal_body[2], fade))
-                        self.screen.blit(trail, (tx - 10, GROUND_Y - P_H + 5))
+            if -80 <= scr_x <= SCREEN_W + 80:
+                # Alpha peaks in the middle of the run, fades at edges
+                t_norm = 1.0 - ta[2] / 80.0          # 0→1 over the run
+                edge_fade = 1.0 - abs(t_norm - 0.5) * 2.0
+                base_alpha = max(50, int(200 * edge_fade))
+
+                # Ground shadow: flat elongated ellipse on the floor
+                sw, sh = 58, 12
+                shad = pygame.Surface((sw, sh), pygame.SRCALPHA)
+                pygame.draw.ellipse(shad, (0, 0, 0, base_alpha), (0, 0, sw, sh))
+                self.screen.blit(shad, (scr_x - sw // 2, GROUND_Y + 1))
+
+                # Shadow trail (smaller ellipses behind)
+                for i in range(1, 6):
+                    tx = scr_x - int(ta[1]) * i * 13
+                    if -40 <= tx <= SCREEN_W + 40:
+                        tw = max(8, sw - i * 9)
+                        t_alpha = max(0, base_alpha - i * 32)
+                        t_surf = pygame.Surface((tw, sh), pygame.SRCALPHA)
+                        pygame.draw.ellipse(t_surf, (0, 0, 0, t_alpha), (0, 0, tw, sh))
+                        self.screen.blit(t_surf, (tx - tw // 2, GROUND_Y + 3))
+
+                # Faint silhouette above — dark shape suggesting someone running
+                sil = pygame.Surface((30, P_H), pygame.SRCALPHA)
+                sil_a = max(0, base_alpha - 80)
+                pygame.draw.circle(sil, (0, 0, 0, sil_a), (15, 11), 9)            # head
+                pygame.draw.rect(sil,   (0, 0, 0, sil_a), (7, 19, 16, P_H - 36)) # torso
+                # Animated legs — offset alternates with ta[2]
+                leg_off = 8 if (ta[2] // 5) % 2 == 0 else -8
+                pygame.draw.rect(sil, (0, 0, 0, sil_a), (6,  P_H - 26, 8, 20 + leg_off))
+                pygame.draw.rect(sil, (0, 0, 0, sil_a), (16, P_H - 26, 8, 20 - leg_off))
+                self.screen.blit(sil, (scr_x - 15, GROUND_Y - P_H))
 
         # Falling hazards
         for hz in self._hazards:
@@ -796,7 +998,29 @@ class Game:
             flash.fill((50, 80, 220, alpha))
             self.screen.blit(flash, (0, 0))
 
+        # --- Tsunami HUD warning (Level 3) ---
+        if self.current_level == 3:
+            lv = self.level
+            if not lv.tsunami_active and lv._tsunami_delay <= 240:
+                # Countdown warning before the wave starts
+                frames_left = lv._tsunami_delay
+                secs = math.ceil(frames_left / 60)
+                blink = (lv._tsunami_delay // 15) % 2 == 0
+                if blink:
+                    warn = self.font_gameover.render(f'TSUNAMI IN {secs}s!', True, (255, 80, 40))
+                    self.screen.blit(warn, warn.get_rect(center=(SCREEN_W // 2, 80)))
+            elif lv.tsunami_active:
+                # Show a small "WAVE" danger tag at the left side of screen
+                sx = int(lv.tsunami_world_x - self.camera_x)
+                if 0 < sx < SCREEN_W:
+                    blink2 = (int(lv.tsunami_world_x) // 12) % 2 == 0
+                    if blink2:
+                        tag = self.font_float.render('WAVE ►', True, (100, 200, 255))
+                        self.screen.blit(tag, (max(0, sx - 50), SCREEN_H // 2 - 10))
+
         ui.draw_hud(self.screen, self.players, self.score, self.enemies)
+
+        self._vpad.draw(self.screen)
 
         for fx, fy, text, col, life in self._float_texts:
             max_life = 110 if text.startswith('!!') else 55
@@ -846,9 +1070,9 @@ class Game:
 
         # Controls
         lines = [
-            ('P1  Arrows/WASD : Move   Space : Jump   Ins : Attack   Del : Heavy   Home : Magic', WHITE),
-            ('P2  J / L : Move   I : Jump   , : Attack   . : Heavy   ; : Magic',                  (200, 220, 255)),
-            ('ESC during game = return to menu',                                                   (160, 160, 160)),
+            ('P1  Arrows : Move   Space/Up : Jump   Ins : Attack   Del : Heavy   Home : Magic', WHITE),
+            ('P2  WASD : Move   W : Jump   Tab : Attack   CapsLock : Heavy   LShift : Magic',   (200, 220, 255)),
+            ('ESC during game = return to menu',                                                 (160, 160, 160)),
         ]
         for i, (text, col) in enumerate(lines):
             t = self.font_hint.render(text, True, col)
@@ -866,6 +1090,10 @@ class Game:
             t = self.font_small.render(text, True, col)
             self.screen.blit(t, t.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2 + 80 + i * 28)))
 
+        # Level-skip hint
+        skip = self.font_hint.render('F1 – F5 : jump directly to that level', True, (140, 160, 140))
+        self.screen.blit(skip, skip.get_rect(center=(SCREEN_W // 2, SCREEN_H - 28)))
+
     def _draw_color_select(self):
         self.screen.fill(SKY_TOP)
         pygame.draw.rect(self.screen, GROUND_COL, (0, SCREEN_H - 80, SCREEN_W, 80))
@@ -873,6 +1101,11 @@ class Game:
 
         title = self.font_big.render('Choose Your Character', True, SCORE_COL)
         self.screen.blit(title, title.get_rect(center=(SCREEN_W // 2, 65)))
+
+        lv = getattr(self, '_start_level', 1)
+        if lv > 1:
+            lv_label = self.font_small.render(f'Starting at Level {lv}', True, (255, 200, 80))
+            self.screen.blit(lv_label, lv_label.get_rect(center=(SCREEN_W // 2, 105)))
 
         opts   = self._COLOR_OPTIONS
         cmap   = self._COLOR_MAP

@@ -156,6 +156,34 @@ def spawn_tornado(particles, x, y):
         ))
 
 
+def spawn_explosion(particles, x, y):
+    """Orange/red blast for Bomber detonation."""
+    particles.append(RingParticle(x, y, 90,  (255, 140,  0), life=20))
+    particles.append(RingParticle(x, y, 60,  (255,  80,  0), life=14))
+    for _ in range(35):
+        angle = random.uniform(0, math.pi * 2)
+        speed = random.uniform(3, 10)
+        col = random.choice([(255, 120, 0), (255, 60, 0), (255, 200, 50), (220, 220, 200)])
+        particles.append(Particle(
+            x, y,
+            math.cos(angle) * speed,
+            math.sin(angle) * speed - 4,
+            random.randint(16, 30), col,
+            random.randint(4, 8), gravity=0.2,
+        ))
+    for _ in range(10):   # smoke puffs
+        particles.append(Particle(
+            x + random.randint(-20, 20),
+            y + random.randint(-10, 10),
+            random.uniform(-1.5, 1.5),
+            random.uniform(-3, -1),
+            random.randint(20, 35),
+            (80, 80, 80),
+            random.randint(5, 10),
+            gravity=0.02,
+        ))
+
+
 def spawn_heal(particles, x, y):
     """Green sparkles — Healer casting a heal."""
     for _ in range(14):

@@ -21,8 +21,8 @@ except ImportError:
     _PIL_OK = False
 
 _DIR = os.path.dirname(__file__)
-_LOTEM_PATH = os.path.join(_DIR, 'KayKit_Adventurers_2.0_FREE', 'Lotem_sprite.png')
-_TWINS_PATH = os.path.join(_DIR, 'KayKit_Adventurers_2.0_FREE', 'twins_sprite.png')
+_LOTEM_PATH = os.path.join(_DIR, 'images', 'KayKit_Adventurers_2.0_FREE', 'Lotem_sprite.png')
+_TWINS_PATH = os.path.join(_DIR, 'images', 'KayKit_Adventurers_2.0_FREE', 'twins_sprite.png')
 
 # ---------------------------------------------------------------------------
 # Frame layout: (x, y, w, h) in the source PNG — LEFT-facing row
@@ -89,20 +89,41 @@ _CHAR_HEIGHTS = {
     'lotem': 55,
     'gal':   68,
     'nitay': 68,
+    'yael':  68,
 }
 
 # Which source file each char uses
+_YAEL_PATH = os.path.join(_DIR, 'images', 'Yael.png')
+
+_YAEL_FRAMES = {            # Yael — Yael.png, dark-navy background
+    'idle':    [(349, 60, 66, 145), (437, 60, 71, 145)],
+    'walk':    [(532, 60, 64, 145), (683, 60, 69, 142),
+                (772, 60, 68, 142), (856, 60, 70, 142)],
+    'run':     [(935, 60, 71, 142), (1012, 60, 75, 142)],
+    'attack':  [(30, 490, 114, 125), (536, 490, 104, 122)],  # punch + kick
+    'jump':    [(106, 280, 73, 155)],
+    'hurt':    [(748, 280, 79, 123)],
+    'victory': [(158, 665, 91, 156), (290, 665, 72, 156), (387, 665, 98, 156)],
+}
+
 _CHAR_SHEET = {
     'asaf':  _LOTEM_PATH,
     'lotem': _LOTEM_PATH,
     'gal':   _TWINS_PATH,
     'nitay': _TWINS_PATH,
+    'yael':  _YAEL_PATH,
 }
 _CHAR_FRAMES = {
     'asaf':  _ASAF_FRAMES,
     'lotem': _LOTEM_FRAMES,
     'gal':   _GAL_FRAMES,
     'nitay': _NITAY_FRAMES,
+    'yael':  _YAEL_FRAMES,
+}
+
+# Background color per char: None = white/light bg; tuple = dark-bg key color
+_CHAR_BG = {
+    'yael': (2, 12, 34),
 }
 
 # Cache: (char, anim, idx) → pygame.Surface (original-size RGBA)
@@ -153,12 +174,73 @@ def _flood_fill_bg(crop_rgb):
     return rgba
 
 
+def _flood_fill_bg_colored(crop_rgb, bg_col, thresh=32):
+    """Flood-fill background removal for a specific (dark) background color."""
+    from collections import deque
+    h, w = crop_rgb.shape[:2]
+    bg = np.array(bg_col, dtype=int)
+    visited = np.zeros((h, w), dtype=bool)
+    q = deque()
+
+    def seed(y, x):
+        if not visited[y, x]:
+            if np.abs(crop_rgb[y, x].astype(int) - bg).max() < thresh:
+                visited[y, x] = True
+                q.append((y, x))
+
+    for y in range(h):
+        seed(y, 0); seed(y, w - 1)
+    for x in range(w):
+        seed(0, x); seed(h - 1, x)
+
+    while q:
+        y, x = q.popleft()
+        for ny, nx in ((y-1, x), (y+1, x), (y, x-1), (y, x+1)):
+            if 0 <= ny < h and 0 <= nx < w and not visited[ny, nx]:
+                if np.abs(crop_rgb[ny, nx].astype(int) - bg).max() < thresh:
+                    visited[ny, nx] = True
+                    q.append((ny, nx))
+
+    rgba = np.empty((h, w, 4), dtype=np.uint8)
+    rgba[:, :, :3] = crop_rgb
+    rgba[:, :, 3] = np.where(visited, 0, 255)
+    return rgba
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+_PROCESSED_DIR = os.path.join(_DIR, 'images', 'processed')
+
+
+def _load_processed() -> bool:
+    """Try loading pre-baked RGBA PNGs from images/processed/. Returns True on success."""
+    if not os.path.isdir(_PROCESSED_DIR):
+        return False
+    loaded = 0
+    for char, frames_dict in _CHAR_FRAMES.items():
+        for anim, rects in frames_dict.items():
+            for i in range(len(rects)):
+                path = os.path.join(_PROCESSED_DIR, f'{char}_{anim}_{i}.png')
+                if not os.path.exists(path):
+                    return False
+                try:
+                    _cache[(char, anim, i)] = pygame.image.load(path).convert_alpha()
+                    loaded += 1
+                except Exception:
+                    return False
+    return loaded > 0
+
+
 def init():
     """Load and cache all sprite frames. Call after pygame.display.init()."""
     global _ready
+
+    # Fast path: pre-processed PNGs work in browser (no PIL needed)
+    if _load_processed():
+        _ready = True
+        return
+
     if not _PIL_OK:
         return
 
@@ -180,10 +262,14 @@ def init():
             src_np = sheets.get(path)
             if src_np is None:
                 continue
+            bg_col = _CHAR_BG.get(char)
             for anim, rects in frames_dict.items():
                 for i, (x, y, w, h) in enumerate(rects):
                     crop = src_np[y:y+h, x:x+w]
-                    rgba = _flood_fill_bg(crop)
+                    if bg_col is not None:
+                        rgba = _flood_fill_bg_colored(crop, bg_col)
+                    else:
+                        rgba = _flood_fill_bg(crop)
                     img_pil = Image.fromarray(rgba, 'RGBA')
                     surf = pygame.image.fromstring(
                         img_pil.tobytes(), img_pil.size, 'RGBA'

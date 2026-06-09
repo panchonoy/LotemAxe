@@ -7,7 +7,8 @@ from game import Game, PLAYING
 
 async def main():
     pygame.init()
-    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.FULLSCREEN)
+    # No FULLSCREEN flag — browser canvas can't handle it; desktop gets windowed mode
+    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption(TITLE)
     clock = pygame.time.Clock()
     game = Game(screen, clock)

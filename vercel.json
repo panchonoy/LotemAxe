@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "framework": null,
+  "installCommand": "pip install pygame pygbag Pillow numpy",
+  "buildCommand": "python -m pygbag --build main.py",
+  "outputDirectory": "build/web"
+}

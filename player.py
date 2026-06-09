@@ -8,21 +8,22 @@ import sprites
 # Default key bindings — imported by game.py to construct players
 # ---------------------------------------------------------------------------
 P1_KEYS = {
-    'left':   [pygame.K_LEFT,  pygame.K_a],
-    'right':  [pygame.K_RIGHT, pygame.K_d],
-    'jump':   [pygame.K_UP,    pygame.K_w, pygame.K_SPACE],
+    'left':   [pygame.K_LEFT],
+    'right':  [pygame.K_RIGHT],
+    'jump':   [pygame.K_UP, pygame.K_SPACE],
     'attack': [pygame.K_INSERT],
     'heavy':  [pygame.K_DELETE],
     'magic':  [pygame.K_HOME],
 }
 
+# P2 uses WASD movement; Tab/CapsLock/LShift for attacks (no overlap with P1)
 P2_KEYS = {
-    'left':   [pygame.K_j],
-    'right':  [pygame.K_l],
-    'jump':   [pygame.K_i],
-    'attack': [pygame.K_COMMA],
-    'heavy':  [pygame.K_PERIOD],
-    'magic':  [pygame.K_SEMICOLON],
+    'left':   [pygame.K_a],
+    'right':  [pygame.K_d],
+    'jump':   [pygame.K_w],
+    'attack': [pygame.K_TAB],
+    'heavy':  [pygame.K_CAPSLOCK],
+    'magic':  [pygame.K_LSHIFT],
 }
 
 
@@ -53,6 +54,7 @@ class Player:
         self.char_name   = _char_name_override or sprite_char or ''
         self.sprite_char = sprite_char if (sprite_char and sprites.is_ready()) else None
         self._anim_t = 0   # tick counter for sprite animation
+        self.virtual_input = {k: False for k in ('left','right','jump','attack','heavy','magic')}
 
         # Nitay hits 15% harder with his fists
         self._atk_dmg_mult = 1.15 if sprite_char == 'nitay' else 1.0
@@ -146,6 +148,11 @@ class Player:
                 if nb > 3 and j.get_button(3): state['magic']  = True  # Y/Triangle
             except Exception:
                 pass
+
+        # Touch / virtual input overlay
+        for action, val in self.virtual_input.items():
+            if val:
+                state[action] = True
 
         return state
 
@@ -521,12 +528,15 @@ class Player:
             pygame.draw.circle(surface, glove_col, (fist_x, fist_y), 9)
 
     # ------------------------------------------------------------------ label
+    _respawn_font = None   # class-level cache — created once
+
     def draw_respawn_countdown(self, surface, cam_x):
         """Show countdown above respawn point while dead."""
         if not self.dead or self.out_of_lives or self.respawn_timer <= 0:
             return
-        sx = max(cam_x + 120, 80) - cam_x
+        if Player._respawn_font is None:
+            Player._respawn_font = pygame.font.SysFont('Arial', 20, bold=True)
+        sx   = max(cam_x + 120, 80) - cam_x
         secs = math.ceil(self.respawn_timer / 60)
-        font = pygame.font.SysFont('Arial', 20, bold=True)
-        txt  = font.render(f'P{self.player_id} respawn {secs}…', True, WHITE)
+        txt  = Player._respawn_font.render(f'P{self.player_id} respawn {secs}…', True, WHITE)
         surface.blit(txt, (sx, GROUND_Y - P_H - 30))

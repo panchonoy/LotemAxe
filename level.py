@@ -2,21 +2,26 @@ import random
 import math
 import pygame
 from settings import *
-from enemy import Grunt, Heavy, Boss, Thrower, Jumper, Healer, TeacherBoss, RollerBoss
+from enemy import Grunt, Heavy, Boss, Thrower, Jumper, Healer, Bomber, TeacherBoss, RollerBoss, FlyingEye, RocketBoss, DoriBoss
 
 
 class Level:
     """Manages the background scenery and enemy spawn triggers."""
 
-    def __init__(self, level_num=1):
+    def __init__(self, level_num=1, num_players=1):
         self.level_num    = level_num
+        self.num_players  = num_players
         self.swarm_active = False   # set True when swarm triggers; game.py reads + resets
         if level_num == 1:
             spawns = SPAWNS
         elif level_num == 2:
             spawns = SPAWNS_L2
-        else:
+        elif level_num == 3:
             spawns = SPAWNS_L3
+        elif level_num == 4:
+            spawns = SPAWNS_L4
+        else:
+            spawns = SPAWNS_L5
         self._pending = list(spawns)
         self.boss_triggered = False
 
@@ -28,14 +33,63 @@ class Level:
             self.pits      = list(PITS_L2)
             self.platforms = list(PLATFORMS_L2)
             self.lava      = list(LAVA_L2)
-        else:
+        elif level_num == 3:
             self.pits      = list(PITS_L3)
             self.platforms = list(PLATFORMS_L3)
             self.lava      = list(LAVA_L3)
+        elif level_num == 4:
+            self.pits      = list(PITS_L4)
+            self.platforms = list(PLATFORMS_L4)
+            self.lava      = list(LAVA_L4)
+        else:
+            self.pits      = list(PITS_L5)
+            self.platforms = list(PLATFORMS_L5)
+            self.lava      = list(LAVA_L5)
 
         rng = random.Random(42 + level_num)
 
-        if level_num == 3:
+        if level_num == 5:
+            # Dori's Nursery — soft pastel room
+            self._sky = pygame.Surface((SCREEN_W, SCREEN_H))
+            for y in range(SCREEN_H):
+                t = y / SCREEN_H
+                r = int(NURSERY_SKY_TOP[0] + (NURSERY_SKY_BOT[0] - NURSERY_SKY_TOP[0]) * t)
+                g = int(NURSERY_SKY_TOP[1] + (NURSERY_SKY_BOT[1] - NURSERY_SKY_TOP[1]) * t)
+                b = int(NURSERY_SKY_TOP[2] + (NURSERY_SKY_BOT[2] - NURSERY_SKY_TOP[2]) * t)
+                pygame.draw.line(self._sky, (r, g, b), (0, y), (SCREEN_W, y))
+            bg_range_n = int(WORLD_W * 0.80 + SCREEN_W)
+            # Toy blocks scattered on background wall
+            self._bg_blocks = [
+                (rng.randint(0, bg_range_n),
+                 rng.randint(80, GROUND_Y - 80),   # y position on wall
+                 rng.randint(0, 3),                 # color index
+                 rng.randint(28, 52))               # size
+                for _ in range(60)
+            ]
+            # Stars on the wall
+            self._bg_stars = [
+                (rng.randint(0, bg_range_n), rng.randint(30, 180))
+                for _ in range(80)
+            ]
+        elif level_num == 4:
+            # Lava inferno cave
+            self._sky = pygame.Surface((SCREEN_W, SCREEN_H))
+            for y in range(SCREEN_H):
+                t = y / SCREEN_H
+                r = int(INFERNO_SKY_TOP[0] + (INFERNO_SKY_BOT[0] - INFERNO_SKY_TOP[0]) * t)
+                g = int(INFERNO_SKY_TOP[1] + (INFERNO_SKY_BOT[1] - INFERNO_SKY_TOP[1]) * t)
+                b = int(INFERNO_SKY_TOP[2] + (INFERNO_SKY_BOT[2] - INFERNO_SKY_TOP[2]) * t)
+                pygame.draw.line(self._sky, (r, g, b), (0, y), (SCREEN_W, y))
+            bg_range_s = int(WORLD_W * 0.70 + SCREEN_W)
+            self._stalactites = [
+                (rng.randint(0, bg_range_s), rng.randint(15, 80))
+                for _ in range(130)
+            ]
+            self._lava_pools = [
+                (rng.randint(0, int(WORLD_W * 0.90)), rng.randint(30, 90))
+                for _ in range(60)
+            ]
+        elif level_num == 3:
             # City/skate park sky
             self._sky = pygame.Surface((SCREEN_W, SCREEN_H))
             for y in range(SCREEN_H):
@@ -52,6 +106,10 @@ class Level:
                  rng.randint(0, 40))      # window rows
                 for _ in range(60)
             ]
+            # Tsunami state — world-x of the right edge of the advancing wave
+            self.tsunami_world_x = 0.0
+            self.tsunami_active  = False
+            self._tsunami_delay  = TSUNAMI_DELAY
         elif level_num == 1:
             # Mountains
             bg_range_m = int(WORLD_W * 0.22 + SCREEN_W)
@@ -101,6 +159,15 @@ class Level:
     # ------------------------------------------------------------------ spawn
     def update(self, camera_x):
         """Return a list of new Enemy instances whose trigger has been passed."""
+        # Tsunami advance (level 3 only)
+        if self.level_num == 3:
+            if not self.tsunami_active:
+                self._tsunami_delay -= 1
+                if self._tsunami_delay <= 0:
+                    self.tsunami_active = True
+            else:
+                self.tsunami_world_x += TSUNAMI_SPEED
+
         new_enemies = []
         remaining = []
         for trigger_x, spawn_list in self._pending:
@@ -122,14 +189,24 @@ class Level:
                     elif kind == 'healer':
                         new_enemies.append(Healer(wx, GROUND_Y - Healer.H))
                         has_regular = True
+                    elif kind == 'bomber':
+                        new_enemies.append(Bomber(wx, GROUND_Y - Bomber.H))
+                        has_regular = True
                     elif kind == 'swarm':
                         new_enemies += self._build_swarm(wx, camera_x)
                         self.swarm_active = True
+                    elif kind == 'eye':
+                        new_enemies.append(FlyingEye(wx, GROUND_Y - FlyingEye.H))
+                        has_regular = True
                     elif kind == 'boss':
                         if self.level_num == 2:
                             new_enemies.append(TeacherBoss(wx, GROUND_Y - TeacherBoss.H))
                         elif self.level_num == 3:
                             new_enemies.append(RollerBoss(wx, GROUND_Y - RollerBoss.H))
+                        elif self.level_num == 4:
+                            new_enemies.append(RocketBoss(wx, GROUND_Y - RocketBoss.H))
+                        elif self.level_num == 5:
+                            new_enemies.append(DoriBoss(wx, GROUND_Y - DoriBoss.H))
                         else:
                             new_enemies.append(Boss(wx, GROUND_Y - Boss.H))
                         self.boss_triggered = True
@@ -142,6 +219,9 @@ class Level:
                         flank_x2 = max(0, camera_x - random.randint(160, 300))
                         flank_cls = Heavy if self.level_num == 2 else Jumper
                         new_enemies.append(flank_cls(flank_x2, GROUND_Y - flank_cls.H))
+                    if self.num_players >= 2:
+                        flank_x3 = max(0, camera_x - random.randint(240, 380))
+                        new_enemies.append(Heavy(flank_x3, GROUND_Y - Heavy.H))
             else:
                 remaining.append((trigger_x, spawn_list))
         self._pending = remaining
@@ -195,7 +275,7 @@ class Level:
                 Thrower(wx + 465, GROUND_Y - Thrower.H),
                 Jumper(wx + 530,  GROUND_Y - Jumper.H),
             ]
-        else:
+        elif self.level_num == 3:
             # 5 left-flank + 8 right = 13 enemies — chaotic mix
             return [
                 # Left flank
@@ -214,6 +294,51 @@ class Level:
                 Jumper(wx + 385,   GROUND_Y - Jumper.H),
                 Grunt(wx + 450,    GROUND_Y - Grunt.H),
             ]
+        elif self.level_num == 4:
+            # Level 4: 4 left + 9 right — maximum chaos, FlyingEyes overhead
+            return [
+                # Left flank
+                Bomber(lx,        GROUND_Y - Bomber.H),
+                Jumper(lx + 70,   GROUND_Y - Jumper.H),
+                Heavy(lx + 140,   GROUND_Y - Heavy.H),
+                Bomber(lx + 210,  GROUND_Y - Bomber.H),
+                # Right flank (ground)
+                Heavy(wx,         GROUND_Y - Heavy.H),
+                Thrower(wx + 65,  GROUND_Y - Thrower.H),
+                Jumper(wx + 130,  GROUND_Y - Jumper.H),
+                Bomber(wx + 195,  GROUND_Y - Bomber.H),
+                Heavy(wx + 260,   GROUND_Y - Heavy.H),
+                Jumper(wx + 325,  GROUND_Y - Jumper.H),
+                Thrower(wx + 390, GROUND_Y - Thrower.H),
+                Bomber(wx + 455,  GROUND_Y - Bomber.H),
+                # Aerial
+                FlyingEye(wx + 90,  GROUND_Y - FlyingEye.H),
+                FlyingEye(wx + 280, GROUND_Y - FlyingEye.H),
+            ]
+        else:
+            # Level 5: everything at once — hardest swarm
+            return [
+                # Left flank
+                Heavy(lx,         GROUND_Y - Heavy.H),
+                Bomber(lx + 65,   GROUND_Y - Bomber.H),
+                FlyingEye(lx + 130, GROUND_Y - FlyingEye.H),
+                Heavy(lx + 195,   GROUND_Y - Heavy.H),
+                Thrower(lx + 260, GROUND_Y - Thrower.H),
+                # Right flank (ground)
+                Heavy(wx,         GROUND_Y - Heavy.H),
+                Jumper(wx + 65,   GROUND_Y - Jumper.H),
+                Bomber(wx + 130,  GROUND_Y - Bomber.H),
+                Thrower(wx + 195, GROUND_Y - Thrower.H),
+                Heavy(wx + 260,   GROUND_Y - Heavy.H),
+                Jumper(wx + 325,  GROUND_Y - Jumper.H),
+                Bomber(wx + 390,  GROUND_Y - Bomber.H),
+                Thrower(wx + 455, GROUND_Y - Thrower.H),
+                Heavy(wx + 520,   GROUND_Y - Heavy.H),
+                # Aerial
+                FlyingEye(wx + 80,  GROUND_Y - FlyingEye.H),
+                FlyingEye(wx + 230, GROUND_Y - FlyingEye.H),
+                FlyingEye(wx + 380, GROUND_Y - FlyingEye.H),
+            ]
 
     # ------------------------------------------------------------------ draw
     def draw_background(self, surface, camera_x):
@@ -224,12 +349,18 @@ class Level:
             self._draw_bg_l1(surface, camera_x)
         elif self.level_num == 2:
             self._draw_bg_l2(surface, camera_x)
-        else:
+        elif self.level_num == 3:
             self._draw_bg_l3(surface, camera_x)
+        elif self.level_num == 4:
+            self._draw_bg_l4(surface, camera_x)
+        else:
+            self._draw_bg_l5(surface, camera_x)
 
         self._draw_lava(surface, camera_x)
         self._draw_platforms(surface, camera_x)
         self._draw_pits(surface, camera_x)
+        if self.level_num == 3:
+            self._draw_tsunami(surface, camera_x)
 
     def _draw_bg_l1(self, surface, camera_x):
         for bg_x, peak_y, mw in self._mountains:
@@ -253,10 +384,14 @@ class Level:
         pygame.draw.rect(surface, (60, 130, 44), (0, GROUND_Y, SCREEN_W, 4))
 
     def _draw_platforms(self, surface, camera_x):
-        stone = (90, 80, 65) if self.level_num == 1 else (58, 48, 72)
-        top   = (120, 110, 90) if self.level_num == 1 else (78, 65, 95)
-        bot   = (60,  52,  42) if self.level_num == 1 else (40, 32, 52)
-        col   = (80,  70,  55) if self.level_num == 1 else (50, 40, 62)
+        if self.level_num == 1:
+            stone, top, bot, col = (90,80,65), (120,110,90), (60,52,42), (80,70,55)
+        elif self.level_num == 4:
+            stone, top, bot, col = (75,28,12), (100,40,15), (50,18,8), (65,24,10)
+        elif self.level_num == 5:
+            stone, top, bot, col = (200,180,220), (225,205,238), (170,150,195), (210,190,228)
+        else:
+            stone, top, bot, col = (58,48,72), (78,65,95), (40,32,52), (50,40,62)
         for wx, wy, pw in self.platforms:
             sx = wx - camera_x
             if sx + pw < 0 or sx > SCREEN_W:
@@ -309,6 +444,128 @@ class Level:
                              (x1c, GROUND_Y, x2c - x1c, SCREEN_H - GROUND_Y))
             pygame.draw.line(surface, (100, 65, 20), (sx1, GROUND_Y), (sx1, SCREEN_H), 3)
             pygame.draw.line(surface, (100, 65, 20), (sx2, GROUND_Y), (sx2, SCREEN_H), 3)
+
+    def _draw_bg_l4(self, surface, camera_x):
+        t = self._torch_t
+        # Ceiling rock
+        pygame.draw.rect(surface, INFERNO_CEILING, (0, 0, SCREEN_W, 22))
+        # Stalactites — bright orange glowing tips (parallax 0.65)
+        for bg_x, drop in self._stalactites:
+            sx = bg_x - int(camera_x * 0.65)
+            if -20 <= sx <= SCREEN_W + 20:
+                w = 8
+                pts = [(sx - w//2, 0), (sx + w//2, 0), (sx, drop)]
+                pygame.draw.polygon(surface, INFERNO_ROCK, pts)
+                # Glowing lava drip tip
+                flicker = int(abs(math.sin(t * 0.14 + bg_x * 0.03)) * 3)
+                pygame.draw.circle(surface, (255, 120 + flicker * 10, 20),
+                                   (sx, drop - 2), 3 + flicker)
+
+        # Background lava rivulets on cave walls (parallax 0.35)
+        for bg_x, pool_w in self._lava_pools:
+            sx = bg_x - int(camera_x * 0.35)
+            if sx + pool_w < 0 or sx > SCREEN_W:
+                continue
+            flicker2 = int(abs(math.sin(t * 0.11 + bg_x * 0.02)) * 4)
+            pygame.draw.rect(surface, (180, 50 + flicker2 * 5, 5),
+                             (sx, GROUND_Y - 50, pool_w, 6))
+            pygame.draw.rect(surface, (240, 100 + flicker2 * 8, 20),
+                             (sx, GROUND_Y - 52, pool_w, 3))
+
+        # Wall pillars (parallax 0.50)
+        for i in range(0, int(WORLD_W * 0.50 + SCREEN_W), 240):
+            sx = i - int(camera_x * 0.50)
+            if -40 <= sx <= SCREEN_W + 40:
+                pygame.draw.rect(surface, INFERNO_ROCK, (sx - 14, GROUND_Y - 90, 28, 90))
+
+        # Ground
+        pygame.draw.rect(surface, INFERNO_GROUND,
+                         (0, GROUND_Y + 10, SCREEN_W, SCREEN_H - GROUND_Y - 10))
+        pygame.draw.rect(surface, INFERNO_ROCK, (0, GROUND_Y, SCREEN_W, 14))
+        # Glowing crack lines on ground
+        for gx in range(0, SCREEN_W + 80, 80):
+            off = int(camera_x * 1.0) % 80
+            cx2 = gx - off
+            glow_int = int(abs(math.sin(t * 0.09 + cx2 * 0.01)) * 60)
+            pygame.draw.line(surface, (200 + glow_int // 2, 60, 5),
+                             (cx2, GROUND_Y + 2), (cx2 + 40, GROUND_Y + 12), 1)
+
+    def _draw_bg_l5(self, surface, camera_x):
+        t = self._torch_t
+        _BLOCK_COLS = [NURSERY_BLOCK_R, NURSERY_BLOCK_B, NURSERY_BLOCK_Y, NURSERY_BLOCK_G]
+
+        # Wall background (lavender)
+        pygame.draw.rect(surface, NURSERY_WALL, (0, 0, SCREEN_W, GROUND_Y))
+
+        # Stars on the wall (parallax 0.20)
+        for bg_x, star_y in self._bg_stars:
+            sx = bg_x - int(camera_x * 0.20)
+            if -15 <= sx <= SCREEN_W + 15:
+                twinkle = int(abs(math.sin(t * 0.08 + bg_x * 0.05)) * 30)
+                col = (NURSERY_STAR[0], NURSERY_STAR[1], NURSERY_STAR[2] - twinkle)
+                # 5-pointed star shortcut: draw two crossing rects
+                pygame.draw.rect(surface, col, (sx - 5, star_y - 1, 10, 3))
+                pygame.draw.rect(surface, col, (sx - 1, star_y - 5, 3, 10))
+                pygame.draw.circle(surface, col, (sx, star_y), 3)
+
+        # Moon on the wall (parallax 0.08)
+        moon_x = 900 - int(camera_x * 0.08)
+        moon_y = 70
+        if -30 <= moon_x <= SCREEN_W + 30:
+            pygame.draw.circle(surface, NURSERY_MOON, (moon_x, moon_y), 28)
+            pygame.draw.circle(surface, NURSERY_WALL, (moon_x + 16, moon_y - 8), 22)
+
+        # Big toy blocks on wall background (parallax 0.30)
+        for bg_x, by, col_idx, size in self._bg_blocks:
+            sx = bg_x - int(camera_x * 0.30)
+            if sx + size < 0 or sx > SCREEN_W:
+                continue
+            col = _BLOCK_COLS[col_idx]
+            darker = tuple(max(0, c - 45) for c in col)
+            lighter = tuple(min(255, c + 30) for c in col)
+            pygame.draw.rect(surface, col, (sx, by, size, size))
+            pygame.draw.rect(surface, lighter, (sx, by, size, 5))         # top highlight
+            pygame.draw.rect(surface, lighter, (sx, by, 5, size))         # left highlight
+            pygame.draw.rect(surface, darker,  (sx, by + size - 4, size, 4))   # bottom shadow
+            pygame.draw.rect(surface, darker,  (sx + size - 4, by, 4, size))   # right shadow
+
+        # Carpet stripes on ground
+        pygame.draw.rect(surface, NURSERY_CARPET,
+                         (0, GROUND_Y + 10, SCREEN_W, SCREEN_H - GROUND_Y - 10))
+        pygame.draw.rect(surface, NURSERY_CARPET, (0, GROUND_Y, SCREEN_W, 14))
+        # Carpet stripe pattern
+        for i in range(0, SCREEN_W + 40, 40):
+            off = int(camera_x * 1.0) % 40
+            pygame.draw.rect(surface, NURSERY_CARPET2, (i - off, GROUND_Y, 20, 14))
+
+    def _draw_tsunami(self, surface, camera_x):
+        if not self.tsunami_active:
+            return
+        t  = self._torch_t
+        # sx: screen-x of the right (leading) edge of the wave
+        sx = int(self.tsunami_world_x - camera_x)
+        draw_w = min(sx, SCREEN_W)
+        if draw_w <= 0:
+            return
+
+        # Translucent water body
+        wave_surf = pygame.Surface((draw_w, SCREEN_H), pygame.SRCALPHA)
+        wave_surf.fill((20, 70, 200, 150))
+        surface.blit(wave_surf, (0, 0))
+
+        # Animated foam at the wave's right edge
+        for y in range(0, SCREEN_H, 3):
+            wobble = int(math.sin(t * 0.18 + y * 0.06) * 10)
+            ex = sx + wobble
+            if 0 <= ex < SCREEN_W:
+                pygame.draw.circle(surface, (180, 225, 255, 200), (ex, y + 1), 3)
+
+        # Bright crest line
+        for y in range(0, SCREEN_H, 2):
+            wobble2 = int(math.sin(t * 0.18 + y * 0.06) * 10)
+            ex2 = sx + wobble2
+            if 0 <= ex2 < SCREEN_W:
+                pygame.draw.rect(surface, (220, 245, 255), (ex2 - 1, y, 3, 2))
 
     def _draw_bg_l3(self, surface, camera_x):
         # Buildings (parallax 0.40)

@@ -171,6 +171,34 @@ HL_RETREAT   = 110
 HL_SPEED     = 1.6
 HL_SCORE     = 200
 
+# --- Bomber (explodes on death after a short fuse) ---
+BOMBER_BODY    = ( 70, 150,  40)
+BOMBER_HEAD    = (110, 195,  70)
+BOMBER_HP      = 35
+BOMBER_ATK_DMG = 8
+BOMBER_RANGE   = 52
+BOMBER_SPEED   = 2.3
+BOMBER_FUSE    = 48    # frames from death-hit to explosion
+BOMBER_RADIUS  = 90   # explosion damage radius (px)
+BOMBER_EXPL_DMG = 28  # explosion damage to players
+
+# --- Cannoneer (artillery lobber — fires arcing cannonballs) ---
+CN_BODY       = ( 70,  45, 120)
+CN_HEAD       = (100,  75, 155)
+CN_ARM        = ( 45,  28,  88)
+CN_HP         = 55
+CN_SPEED      = 1.3
+CN_SCORE      = 210
+CN_FIRE_CD    = 145   # frames between shots
+CN_FIRE_MIN   = 180   # won't fire if player is closer than this
+CN_FIRE_MAX   = 490   # won't fire if player is farther than this
+CN_RETREAT    = 140   # runs away when player is within this range
+CN_LAUNCH_VY  = 12.5  # upward launch speed; arc height ~120 px at GRAVITY=0.65
+CN_PROJ_DMG   = 22
+CN_PROJ_SIZE  = 8     # cannonball radius (draw + hitbox)
+CN_BLAST_RAD  = 75    # ground blast radius
+BOMBER_SCORE   = 175
+
 # --- Per-character magic ---
 P_MAGIC_RAD_ASAF    = 200    # wider shockwave
 P_MAGIC_DMG_ASAF    = 80
@@ -207,9 +235,9 @@ SPAWNS = [
     (2400, [(3500, 'swarm')]),
     (2800, [(4000, 'grunt'), (4200, 'heavy'), (4400, 'grunt'), (4600, 'heavy')]),
     (3400, [(4800, 'heavy'), (5000, 'grunt')]),
-    (3800, [(5200, 'grunt'), (5400, 'thrower'), (5600, 'grunt'), (5800, 'heavy'), (6000, 'thrower')]),
-    (4700, [(6200, 'heavy'), (6400, 'jumper'), (6600, 'heavy')]),
-    (5300, [(6800, 'healer'), (7000, 'heavy'), (7200, 'grunt'), (7400, 'thrower')]),
+    (3800, [(5200, 'grunt'), (5400, 'thrower'), (5600, 'bomber'), (5800, 'heavy'), (6000, 'cannoneer')]),
+    (4700, [(6200, 'heavy'), (6400, 'cannoneer'), (6600, 'heavy')]),
+    (5300, [(6800, 'healer'), (7000, 'cannoneer'), (7200, 'grunt'), (7400, 'thrower')]),
     (6400, [(BOSS_SPAWN, 'boss')]),
 ]
 
@@ -222,10 +250,10 @@ SPAWNS_L2 = [
     (1700, [(3000, 'heavy'), (3200, 'grunt'), (3400, 'heavy')]),
     # --- SWARM (L2) ---
     (2400, [(3700, 'swarm')]),
-    (3000, [(4400, 'jumper'), (4600, 'grunt'), (4800, 'jumper'), (5000, 'thrower')]),
-    (3800, [(5200, 'heavy'), (5400, 'healer'), (5600, 'jumper')]),
-    (4500, [(5800, 'thrower'), (6000, 'heavy'), (6200, 'jumper'), (6400, 'heavy')]),
-    (5200, [(6600, 'healer'), (6800, 'jumper'), (7000, 'thrower')]),
+    (3000, [(4400, 'jumper'), (4600, 'cannoneer'), (4800, 'jumper'), (5000, 'thrower')]),
+    (3800, [(5200, 'heavy'), (5400, 'healer'), (5600, 'cannoneer')]),
+    (4500, [(5800, 'cannoneer'), (6000, 'bomber'), (6200, 'jumper'), (6400, 'heavy')]),
+    (5200, [(6600, 'healer'), (6800, 'cannoneer'), (7000, 'thrower')]),
     (6000, [(7200, 'grunt'), (7400, 'heavy'), (7500, 'grunt')]),
     (6400, [(BOSS_SPAWN, 'boss')]),
 ]
@@ -292,6 +320,13 @@ LAVA_L2 = [
 LAVA_DMG      = 15   # HP removed per tick
 LAVA_INTERVAL = 45   # frames between lava damage ticks (~0.75 s)
 
+# --- Tsunami (Level 3) ---
+TSUNAMI_SPEED    = 0.8   # world-px per frame the wave advances
+TSUNAMI_DMG      = 15    # HP removed per tick when caught in the wave
+TSUNAMI_INTERVAL = 40    # frames between tsunami damage ticks
+TSUNAMI_DELAY    = 360   # frames grace period before wave starts moving (~6 s)
+TSUNAMI_CAM_GAP  = 450   # how many px ahead of the wave the camera minimum sits
+
 # ---------------------------------------------------------------------------
 # Boss upgrade (Long Sword Lunge + Ground Slam)
 # ---------------------------------------------------------------------------
@@ -317,7 +352,7 @@ TB_ATK_DMG     = 25    # Ruler Sweep damage
 TB_ATK_RANGE   = 250
 TB_ATK_CD      = 38
 TB_CHALK_DMG   = 18
-TB_CHALK_SPD   = 7
+TB_CHALK_SPD   = 5
 TB_CHALK_CD    = 55
 TB_SCORE       = 4000
 TB_BODY        = ( 80,  80,  90)
@@ -345,7 +380,7 @@ RB_BODY        = ( 30, 100, 170)
 RB_HEAD        = ( 55, 140, 210)
 
 # ---------------------------------------------------------------------------
-# Yael (unlockable character — beat all 3 levels)
+# Yael (unlockable character — beat all 5 levels)
 # ---------------------------------------------------------------------------
 YAEL_SPEED_MULT = 1.2
 YAEL_HP         = 75
@@ -353,6 +388,95 @@ YAEL_BODY       = (220,  80, 150)
 YAEL_HEAD       = (245, 115, 185)
 YAEL_CAPE       = (160,  40, 110)
 YAEL_UNLOCK_FILE = 'yael_unlocked.txt'
+
+# ---------------------------------------------------------------------------
+# DoriBoss (Level 5 final boss — giant, powerful, blonde baby)
+# ---------------------------------------------------------------------------
+DORI_W          = 96
+DORI_H          = 140
+DORI_SPEED      = 1.3
+DORI_HP         = 900
+DORI_ATK_DMG    = 30
+DORI_ATK_RANGE  = 110
+DORI_ATK_CD     = 48
+DORI_BLOCK_DMG  = 42
+DORI_BLOCK_SPD  = 5
+DORI_BLOCK_CD   = 105    # frames between block throws
+DORI_BLOCK_CD2  = 60     # phase 2 throw cooldown
+DORI_POUND_DMG  = 55     # shockwave damage on landing
+DORI_POUND_CD   = 220    # frames between ground pounds
+DORI_CHARGE_SPD = 7.0    # phase-2 tantrum charge speed
+DORI_CHARGE_DUR = 36     # frames the charge lasts
+DORI_CHARGE_CD  = 200    # frames between charges
+DORI_SCORE      = 8000
+DORI_SKIN       = (235, 190, 168)   # peach/pink skin
+DORI_SKIN_DARK  = (210, 160, 138)   # shading
+DORI_HAIR       = (238, 202,  45)   # golden blonde hair
+DORI_DIAPER     = (242, 242, 252)   # white diaper
+DORI_PIN        = (200, 180, 220)   # safety pin
+DORI_BLUSH      = (230, 140, 135)   # cheek blush
+DORI_EYE_IRIS   = ( 80, 130, 210)   # baby-blue iris
+
+# ---------------------------------------------------------------------------
+# Level 5 (Dori's Nursery) colors
+# ---------------------------------------------------------------------------
+NURSERY_SKY_TOP  = (195, 220, 248)   # soft blue
+NURSERY_SKY_BOT  = (228, 240, 255)   # lighter near horizon
+NURSERY_WALL     = (210, 195, 225)   # lavender wall
+NURSERY_CARPET   = (185, 158, 122)   # warm tan carpet
+NURSERY_CARPET2  = (165, 138, 102)   # carpet stripe
+NURSERY_BLOCK_R  = (218,  72,  72)   # red toy block
+NURSERY_BLOCK_B  = ( 72, 115, 218)   # blue toy block
+NURSERY_BLOCK_Y  = (238, 195,  45)   # yellow toy block
+NURSERY_BLOCK_G  = ( 72, 175,  80)   # green toy block
+NURSERY_STAR     = (255, 238, 130)   # wall star
+NURSERY_MOON     = (248, 225, 130)   # crescent moon
+
+# ---------------------------------------------------------------------------
+# Level 5 data
+# ---------------------------------------------------------------------------
+BOSS_SPAWN_L5 = 7800
+
+SPAWNS_L5 = [
+    (  0, [(700,  'heavy'),  (900,  'eye')]),
+    (300, [(1200, 'jumper'), (1400, 'heavy'),  (1600, 'thrower'), (1800, 'eye')]),
+    (700, [(2000, 'heavy'),  (2200, 'cannoneer'), (2400, 'thrower'), (2600, 'eye')]),
+    (1200, [(2800, 'cannoneer'),(3000, 'heavy'),(3200, 'jumper'), (3400, 'bomber'), (3600, 'eye')]),
+    (1800, [(3800, 'eye'),   (4000, 'healer'), (4200, 'cannoneer'), (4400, 'heavy'), (4600, 'eye')]),
+    (2200, [(4800, 'swarm')]),
+    (2800, [(5000, 'cannoneer'),(5200, 'eye'),  (5400, 'thrower'), (5600, 'bomber'), (5800, 'heavy')]),
+    (3400, [(6000, 'jumper'), (6200, 'cannoneer'),(6400, 'healer'),(6600, 'bomber')]),
+    (4100, [(6800, 'cannoneer'),(7000, 'eye'),  (7200, 'thrower'), (7400, 'heavy')]),
+    (6500, [(BOSS_SPAWN_L5, 'boss')]),
+]
+
+PLATFORMS_L5 = [
+    (1500, GROUND_Y - 140, 180),
+    (3400, GROUND_Y - 130, 170),
+    (5500, GROUND_Y - 140, 180),
+]
+
+PITS_L5 = [
+    (2200, 2380),
+    (4000, 4180),
+    (6000, 6180),
+    (7100, 7280),
+]
+
+LAVA_L5 = [
+    (1000, 1200),
+    (3200, 3400),
+    (5200, 5400),
+    (6700, 6900),
+]
+
+PICKUPS_L5 = [
+    (800,  'crystal'), (1700, 'milk'),
+    (2900, 'crystal'), (3700, 'salmon'),
+    (4600, 'crystal'), (5500, 'milk'),
+    (6400, 'crystal'), (7000, 'salmon'),
+    (7300, 'crystal'), (7600, 'dog'),
+]
 
 # ---------------------------------------------------------------------------
 # Falling hazards (active during boss fights from level 2+)
@@ -386,9 +510,9 @@ SPAWNS_L3 = [
     (1800, [(3500, 'jumper'),(3700, 'healer'), (3900, 'jumper')]),
     # --- SWARM (L3) ---
     (2200, [(4000, 'swarm')]),
-    (2700, [(4100, 'heavy'), (4300, 'thrower'),(4500, 'jumper'), (4700, 'heavy')]),
-    (3100, [(4900, 'jumper'),(5100, 'healer'), (5300, 'heavy'),  (5500, 'jumper')]),
-    (3900, [(5700, 'thrower'),(5900, 'jumper'),(6100, 'heavy'),  (6300, 'thrower')]),
+    (2700, [(4100, 'heavy'), (4300, 'cannoneer'),(4500, 'jumper'), (4700, 'heavy')]),
+    (3100, [(4900, 'jumper'),(5100, 'healer'),  (5300, 'cannoneer'),(5500, 'jumper')]),
+    (3900, [(5700, 'cannoneer'),(5900, 'bomber'),(6100, 'heavy'), (6300, 'thrower')]),
     (4600, [(6500, 'jumper'),(6700, 'heavy'),  (6900, 'jumper')]),
     (5300, [(7000, 'grunt'), (7100, 'thrower'),(7150, 'heavy')]),
     (6400, [(BOSS_SPAWN_L3, 'boss')]),
@@ -417,4 +541,100 @@ PICKUPS_L3 = [
     (4500, 'crystal'), (5300, 'milk'),
     (6200, 'crystal'), (6700, 'salmon'),
     (7000, 'crystal'), (7100, 'dog'),
+]
+
+# ---------------------------------------------------------------------------
+# FlyingEye (aerial minion — immune to pits and lava, swoops to attack)
+# ---------------------------------------------------------------------------
+FE_W         = 44
+FE_H         = 44
+FE_FLOAT_Y   = GROUND_Y - 115   # hover height (world y)
+FE_SPEED      = 2.9
+FE_HP         = 38
+FE_ATK_DMG    = 14
+FE_ATK_RANGE  = 58
+FE_ATK_CD     = 65
+FE_HURT_DUR   = 12
+FE_SCORE      = 180
+FE_EYE_COL    = (200, 55, 30)
+FE_WING_COL   = (100, 55, 28)
+FE_SPIT_CD    = 155   # frames between spit shots
+FE_SPIT_SPD   = 5.5   # pixels per frame
+FE_SPIT_DMG   = 11    # damage per spit hit
+FE_SPIT_RANGE = 400   # max horizontal px to trigger a spit
+
+# ---------------------------------------------------------------------------
+# RocketBoss (Level 4 boss: rocket launcher + phase-2 double volley)
+# ---------------------------------------------------------------------------
+ROKB_W            = 72
+ROKB_H            = 102
+ROKB_SPEED        = 1.7
+ROKB_HP           = 650
+ROKB_ATK_DMG      = 22
+ROKB_ATK_RANGE    = 90
+ROKB_ATK_CD       = 55
+ROKB_ROCKET_DMG   = 35
+ROKB_ROCKET_SPD   = 7
+ROKB_ROCKET_CD    = 110
+ROKB_SCORE        = 6000
+ROKB_BODY         = (160, 55, 20)
+ROKB_HEAD         = (205, 100, 55)
+ROKB_ARMOR        = ( 95,  38, 15)
+ROKB_LAUNCHER_COL = ( 50,  50, 60)
+
+# ---------------------------------------------------------------------------
+# Level 4 (lava inferno cave) colors
+# ---------------------------------------------------------------------------
+INFERNO_SKY_TOP = ( 35,   5,   2)
+INFERNO_SKY_BOT = ( 78,  18,   8)
+INFERNO_GROUND  = ( 55,  20,   8)
+INFERNO_ROCK    = ( 72,  28,  12)
+INFERNO_CEILING = ( 40,  12,   4)
+
+# ---------------------------------------------------------------------------
+# Level 4 data
+# ---------------------------------------------------------------------------
+BOSS_SPAWN_L4 = 7800
+
+SPAWNS_L4 = [
+    (  0, [(700,  'heavy'),  (900,  'jumper')]),
+    (300, [(1200, 'jumper'), (1400, 'heavy'),  (1600, 'bomber')]),
+    (700, [(1900, 'heavy'),  (2100, 'jumper'), (2300, 'cannoneer'), (2500, 'eye')]),
+    (1200, [(2600, 'cannoneer'),(2800, 'heavy'),(3000, 'jumper'), (3200, 'bomber')]),
+    (1800, [(3400, 'eye'),   (3600, 'healer'), (3800, 'cannoneer'), (3950, 'eye')]),
+    (2200, [(4000, 'swarm')]),
+    (2800, [(4200, 'heavy'),  (4400, 'cannoneer'),(4600, 'thrower'), (4800, 'heavy')]),
+    (3400, [(5000, 'bomber'), (5200, 'jumper'), (5400, 'cannoneer'), (5600, 'eye')]),
+    (4100, [(5800, 'cannoneer'),(6000, 'bomber'),(6200, 'eye'),  (6400, 'thrower')]),
+    (4900, [(6600, 'heavy'),  (6800, 'eye'),   (7000, 'bomber')]),
+    (5600, [(7200, 'thrower'),(7300, 'heavy'),  (7400, 'jumper')]),
+    (6500, [(BOSS_SPAWN_L4, 'boss')]),
+]
+
+PLATFORMS_L4 = [
+    (1800, GROUND_Y - 130, 160),
+    (3500, GROUND_Y - 120, 170),
+    (5600, GROUND_Y - 125, 155),
+]
+
+PITS_L4 = [
+    (2400, 2560),
+    (4200, 4380),
+    (5900, 6060),
+    (6800, 6960),
+]
+
+LAVA_L4 = [
+    (1200, 1420),
+    (3000, 3220),
+    (4900, 5100),
+    (6500, 6680),
+]
+
+PICKUPS_L4 = [
+    (800,  'crystal'), (1700, 'milk'),
+    (2900, 'crystal'), (3800, 'salmon'),
+    (4700, 'crystal'), (5500, 'milk'),
+    (6300, 'crystal'), (6900, 'salmon'),
+    (7200, 'crystal'), (7600, 'dog'),
 ]

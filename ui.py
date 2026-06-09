@@ -69,7 +69,7 @@ def _draw_player_panel(surface, player, left, fonts):
          player.magic, player.max_magic, MAGIC_COL, MAGIC_BG, 'MP', fonts['xs'])
 
     # Crystal counter — shown below the panel so it never overlaps
-    gem_surf = fonts['xs'].render(f'◆ {player.crystals} / 100', True, (80, 220, 255))
+    gem_surf = fonts['xs'].render(f'◆ {player.crystals} / 20', True, (80, 220, 255))
     surface.blit(gem_surf, (px + 6, py + ph + 2))
 
 
@@ -133,7 +133,7 @@ def _draw_boss_bar(surface, enemies, fonts):
 
 def _draw_controls_hint(surface, fonts):
     hint = fonts['xs'].render(
-        'P1: Arrows/WASD Move · Space Jump · Ins Attack · Del Heavy · Home Magic      '
-        'P2: J/L Move · I Jump · , Attack · . Heavy · ; Magic',
+        'P1: Arrows Move · Space/Up Jump · Ins Attack · Del Heavy · Home Magic      '
+        'P2: WASD Move · W Jump · Tab Attack · CapsLock Heavy · LShift Magic',
         True, (130, 140, 160))
     surface.blit(hint, (SCREEN_W // 2 - hint.get_width() // 2, SCREEN_H - 16))

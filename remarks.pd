@@ -72,3 +72,23 @@ Second phase:
     h. make a different health bar for every player.
     i. stuff still don't fall frm the sky, and no enemy throws stuff (only shoot directly).
     j. add enemies that explode a moment after dying, reducing players' healths, so players need to move fast from those.
+    k. more enemies if 2 players.
+    l. create 2 more levels, 3 and 4. Each level is harder, and contains at last 1 new enemy.
+     bosses: 3-a giant shooting rockets   4-Dori- a giant, powerful, blonde baby.
+
+     more stuff:
+     a. the diamonds are pretty useless - 100 gice a heart. let's do 20 (assuming the number is saved accros levels) - or do you have a better solution?
+     b.issue with coop:
+        when you pick one player, it picks the same character for both. I want the opposite - the other player cannot have the same character.
+     c. what about music?
+     d. the giant baby throws in a way that misses you (higher the the character).
+        make him throw in random angles, so are low.   
+     e. level 3 is a bit boring. I thought about a "tsunami" that makes the character go forward all the time instead of anticipating theenemy patterns.
+        make that. when the character touches the tsunami (can be a lava or something else) - health reduces similarly to the lava mechanism. 
+     f. make Yael available to pick as a character by presing F6 when picking characters.
+     g. push to github and deploy to a web server like vercel so I can send the address to friends.
+     h. make the gameplayable in Tablets and smartphones as well (from web).
+
+     new fixes to do:
+     a. Yael character is not from the sprite I added (Yael.png in images), but a generic character.
+     b.

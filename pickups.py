@@ -37,8 +37,8 @@ class Pickup:
             player.hp = min(player.max_hp, player.hp + cfg['hp'])
         if cfg['crystals']:
             player.crystals += cfg['crystals']
-            if player.crystals >= 100:
-                player.crystals -= 100
+            if player.crystals >= 20:
+                player.crystals -= 20
                 if player.lives < PLAYER_LIVES_MAX:
                     player.lives += 1
         if cfg['mana']:
