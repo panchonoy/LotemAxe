@@ -1077,9 +1077,6 @@ class Game:
             t = self.font_small.render(text, True, col)
             self.screen.blit(t, t.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2 + 20 + i * 28)))
 
-        # Level-skip hint
-        skip = self.font_hint.render('F1 – F5 : jump directly to that level', True, (140, 160, 140))
-        self.screen.blit(skip, skip.get_rect(center=(SCREEN_W // 2, SCREEN_H - 28)))
 
     def _draw_color_select(self):
         self.screen.fill(SKY_TOP)
