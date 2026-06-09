@@ -489,7 +489,7 @@ FALL_HAZARD_DMG    = 15
 FALL_HAZARD_MIN_CD = 200
 FALL_HAZARD_MAX_CD = 300
 FALL_HAZARD_WARN   = 60    # shadow frames before impact
-FALL_HAZARD_SPEED  = 7
+FALL_HAZARD_SPEED  = 4
 
 # ---------------------------------------------------------------------------
 # Level 3 (city / skate park) colors

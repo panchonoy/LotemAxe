@@ -1916,53 +1916,50 @@ class FlyingEye(Grunt):
 class Rocket:
     W, H = 30, 10
 
-    def __init__(self, x, y, facing, speed, dmg):
+    def __init__(self, x, y, vx, vy, dmg):
         self.x      = float(x)
         self.y      = float(y)
-        self.facing = facing
-        self.speed  = speed
+        self.vx     = float(vx)
+        self.vy     = float(vy)
         self.dmg    = dmg
         self.alive  = True
         self._t     = 0
+        self.facing = 1 if vx >= 0 else -1
 
     @property
     def rect(self):
-        rx = int(self.x) if self.facing > 0 else int(self.x) - self.W
-        return pygame.Rect(rx, int(self.y) - self.H // 2, self.W, self.H)
+        return pygame.Rect(int(self.x) - 15, int(self.y) - 8, 30, 16)
 
     def update(self):
-        self.x += self.speed * self.facing
+        self.x += self.vx
+        self.y += self.vy
         self._t += 1
-        if self.x < -300 or self.x > WORLD_W + 300:
+        if self.x < -300 or self.x > WORLD_W + 300 or self.y > GROUND_Y + 60:
             self.alive = False
 
     def draw(self, surface, cam_x):
         if not self.alive:
             return
         sx = int(self.x) - cam_x
-        if not (-60 <= sx <= SCREEN_W + 60):
+        if not (-80 <= sx <= SCREEN_W + 80):
             return
-        sy  = int(self.y)
-        f   = self.facing
-        bx  = sx if f > 0 else sx - self.W
-        # Rocket body
-        pygame.draw.rect(surface, (220, 80, 20), (bx, sy - 5, self.W, 10), border_radius=3)
-        # Nose cone
-        if f > 0:
-            pts = [(bx + self.W, sy - 5), (bx + self.W + 12, sy), (bx + self.W, sy + 5)]
-        else:
-            pts = [(bx, sy - 5), (bx - 12, sy), (bx, sy + 5)]
-        pygame.draw.polygon(surface, (255, 150, 50), pts)
-        # Tail fins
-        tail = bx if f > 0 else bx + self.W
-        pygame.draw.polygon(surface, (180, 55, 12),
-                            [(tail, sy - 5), (tail - 6 * f, sy - 11), (tail, sy)])
-        pygame.draw.polygon(surface, (180, 55, 12),
-                            [(tail, sy + 5), (tail - 6 * f, sy + 11), (tail, sy)])
-        # Exhaust flame
+        sy = int(self.y)
+
+        # Draw rocket pointing right on a temp surface, then rotate to match velocity
+        tmp = pygame.Surface((54, 28), pygame.SRCALPHA)
+        my = 14   # vertical center
+        bx = 10   # body left edge (leaves room for tail fins)
         flame_r = 4 + int(abs(math.sin(self._t * 0.42)) * 4)
-        pygame.draw.circle(surface, (255, 200, 60), (tail, sy), flame_r)
-        pygame.draw.circle(surface, (200, 80, 10),  (tail, sy), max(1, flame_r - 2))
+        pygame.draw.circle(tmp, (255, 200, 60), (bx, my), flame_r)
+        pygame.draw.circle(tmp, (200, 80, 10),  (bx, my), max(1, flame_r - 2))
+        pygame.draw.rect(tmp, (220, 80, 20), (bx, my - 5, 30, 10), border_radius=3)
+        pygame.draw.polygon(tmp, (180, 55, 12), [(bx, my - 5), (bx - 6, my - 11), (bx, my)])
+        pygame.draw.polygon(tmp, (180, 55, 12), [(bx, my + 5), (bx - 6, my + 11), (bx, my)])
+        pygame.draw.polygon(tmp, (255, 150, 50), [(bx + 30, my - 5), (bx + 42, my), (bx + 30, my + 5)])
+
+        angle_deg = -math.degrees(math.atan2(self.vy, self.vx))
+        rotated = pygame.transform.rotate(tmp, angle_deg)
+        surface.blit(rotated, rotated.get_rect(center=(sx, sy)))
 
 
 # ---------------------------------------------------------------------------
@@ -2046,17 +2043,25 @@ class RocketBoss(Boss):
         target = min(candidates, key=lambda p: abs(p.rect.centerx - self.rect.centerx))
         dx = target.rect.centerx - self.rect.centerx
 
-        # Rocket volley
+        # Rocket volley — aim directly at target player
         if self._rocket_cd > 0:
             self._rocket_cd -= 1
         elif self.hurt_timer == 0 and abs(dx) > 70:
-            f  = 1 if dx > 0 else -1
-            self.facing = f
-            fy = float(self.rect.centery - 10)
+            self.facing = 1 if dx > 0 else -1
             fx = float(self.rect.centerx)
-            self.pending_rockets.append(Rocket(fx, fy, f, ROKB_ROCKET_SPD, ROKB_ROCKET_DMG))
+            fy = float(self.rect.centery - 10)
+            tdx = float(target.rect.centerx) - fx
+            tdy = float(target.rect.centery) - fy
+            dist = math.hypot(tdx, tdy)
+            if dist > 0:
+                vx_r = tdx / dist * ROKB_ROCKET_SPD
+                vy_r = tdy / dist * ROKB_ROCKET_SPD
+            else:
+                vx_r = float(self.facing) * ROKB_ROCKET_SPD
+                vy_r = 0.0
+            self.pending_rockets.append(Rocket(fx, fy, vx_r, vy_r, ROKB_ROCKET_DMG))
             if self.phase2:
-                self.pending_rockets.append(Rocket(fx, fy + 16, f, ROKB_ROCKET_SPD, ROKB_ROCKET_DMG))
+                self.pending_rockets.append(Rocket(fx, fy + 16, vx_r, vy_r, ROKB_ROCKET_DMG))
             base = ROKB_ROCKET_CD if not self.phase2 else ROKB_ROCKET_CD // 2
             self._rocket_cd = random.randint(int(base * 0.65), int(base * 1.40))
             self.fire_text  = 'INCOMING!'

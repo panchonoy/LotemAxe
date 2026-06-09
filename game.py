@@ -783,17 +783,15 @@ class Game:
                     wx = int(tx.x) + random.randint(-120, 120)
                     wx = max(50, min(wx, WORLD_W - 50))
                     self._hazards.append([wx, -30.0, 0.0,
-                                          FALL_HAZARD_WARN, random.randint(0, 2)])
+                                          FALL_HAZARD_WARN, random.randint(0, 2), False])
 
             hit_players = set()
             for hz in self._hazards:
                 hz[3] -= 1   # warn_t countdown
                 if hz[3] <= 0:
-                    hz[2] += FALL_HAZARD_SPEED   # falling vy (stored as distance per frame)
-                    hz[1] += hz[2]               # y increases downward (screen coords)
-                    if hz[1] >= GROUND_Y - 20:
-                        # Impact!
-                        hz_scr_x = hz[0] - int(self.camera_x)
+                    hz[1] += FALL_HAZARD_SPEED   # constant fall velocity
+                    if hz[1] >= GROUND_Y - 20 and not hz[5]:
+                        hz[5] = True   # damage applied once at ground level
                         for player in self.players:
                             if player.dead or player.out_of_lives:
                                 continue
@@ -802,8 +800,7 @@ class Game:
                                     hit_players.add(player)
                                     if player.take_damage(FALL_HAZARD_DMG):
                                         self._shake = max(self._shake, 4.0)
-                        hz[1] = GROUND_Y + 100   # mark for removal
-            self._hazards = [hz for hz in self._hazards if hz[1] < GROUND_Y + 80]
+            self._hazards = [hz for hz in self._hazards if hz[1] < SCREEN_H + 60]
 
         # --- Particles ---
         self.particles = [p for p in self.particles if p.update()]
