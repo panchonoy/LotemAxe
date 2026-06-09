@@ -70,6 +70,7 @@ class Game:
             self._joysticks.append(j)
 
         self._init_fonts()
+        self._vignette = self._build_vignette()
         self.hiscore              = _load_hiscore()
         self.num_players          = 1
         self.current_level        = 1
@@ -88,6 +89,14 @@ class Game:
         self.font_hint     = pygame.font.SysFont('Arial', 14)
         self.font_float    = pygame.font.SysFont('Arial', 16, bold=True)
         self.font_gameover = pygame.font.SysFont('Arial', 28, bold=True)
+
+    def _build_vignette(self):
+        surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        for i in range(55):
+            alpha = max(0, 115 - i * 2)
+            pygame.draw.rect(surf, (0, 0, 0, alpha),
+                             (i, i, SCREEN_W - 2 * i, SCREEN_H - 2 * i), 1)
+        return surf
 
     def _new_game(self, level_num=1):
         # Preserve crystal counts when advancing levels (not on fresh start)
@@ -1340,6 +1349,8 @@ class Game:
             flash = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
             flash.fill((50, 80, 220, alpha))
             self.screen.blit(flash, (0, 0))
+
+        self.screen.blit(self._vignette, (0, 0))
 
         # --- Tsunami HUD warning (Level 3) ---
         if self.current_level == 3:

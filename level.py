@@ -71,6 +71,13 @@ class Level:
                 (rng.randint(0, bg_range_n), rng.randint(30, 180))
                 for _ in range(80)
             ]
+            _rng3 = random.Random(146)
+            self._far_shelves = [
+                (_rng3.randint(0, int(WORLD_W * 0.12 + SCREEN_W)),
+                 _rng3.randint(100, 220),
+                 _rng3.randint(50, 110))
+                for _ in range(20)
+            ]
         elif level_num == 4:
             # Lava inferno cave
             self._sky = pygame.Surface((SCREEN_W, SCREEN_H))
@@ -89,6 +96,13 @@ class Level:
                 (rng.randint(0, int(WORLD_W * 0.90)), rng.randint(30, 90))
                 for _ in range(60)
             ]
+            _rng3 = random.Random(145)
+            self._bg_formations = [
+                (_rng3.randint(0, int(WORLD_W * 0.22 + SCREEN_W)),
+                 _rng3.randint(40, 90),
+                 _rng3.randint(60, 150))
+                for _ in range(35)
+            ]
         elif level_num == 3:
             # City/skate park sky
             self._sky = pygame.Surface((SCREEN_W, SCREEN_H))
@@ -105,6 +119,13 @@ class Level:
                  rng.randint(50, 120),    # width
                  rng.randint(0, 40))      # window rows
                 for _ in range(60)
+            ]
+            _rng3 = random.Random(144)
+            self._far_skyline = [
+                (_rng3.randint(0, int(WORLD_W * 0.15 + SCREEN_W)),
+                 _rng3.randint(50, 140),
+                 _rng3.randint(30, 75))
+                for _ in range(50)
             ]
             # Tsunami state — world-x of the right edge of the advancing wave
             self.tsunami_world_x = 0.0
@@ -124,6 +145,13 @@ class Level:
             self._trees = [
                 (rng.randint(0, bg_range_t), rng.randint(55, 105))
                 for _ in range(80)
+            ]
+            _rng3 = random.Random(142)
+            self._foothills = [
+                (_rng3.randint(0, int(WORLD_W * 0.38 + SCREEN_W)),
+                 _rng3.randint(30, 62),
+                 _rng3.randint(80, 180))
+                for _ in range(40)
             ]
             # Sky gradient
             self._sky = pygame.Surface((SCREEN_W, SCREEN_H))
@@ -146,6 +174,13 @@ class Level:
                 rng.randint(0, bg_range_tor)
                 for _ in range(40)
             ]
+            _rng3 = random.Random(143)
+            self._far_cave = [
+                (_rng3.randint(0, int(WORLD_W * 0.25 + SCREEN_W)),
+                 _rng3.randint(30, 65),
+                 _rng3.randint(50, 100))
+                for _ in range(28)
+            ]
             self._sky = pygame.Surface((SCREEN_W, SCREEN_H))
             for y in range(SCREEN_H):
                 t = y / SCREEN_H
@@ -155,6 +190,8 @@ class Level:
                 pygame.draw.line(self._sky, (r, g, b), (0, y), (SCREEN_W, y))
 
         self._torch_t = 0  # flicker timer
+        self._prng = random.Random(242 + level_num)
+        self._init_particles(self._prng)
 
     # ------------------------------------------------------------------ spawn
     def update(self, camera_x, freeze_tsunami=False):
@@ -361,6 +398,7 @@ class Level:
         self._draw_pits(surface, camera_x)
         if self.level_num == 3:
             self._draw_tsunami(surface, camera_x)
+        self._update_draw_particles(surface, camera_x)
 
     def _draw_bg_l1(self, surface, camera_x):
         for bg_x, peak_y, mw in self._mountains:
@@ -370,6 +408,13 @@ class Level:
                        (sx + mw//2, peak_y),
                        (sx + mw,   GROUND_Y - 15)]
                 pygame.draw.polygon(surface, MOUNTAIN, pts)
+
+        # Mid-ground foothills (parallax 0.38)
+        for bg_x, fh, fw in self._foothills:
+            sx = bg_x - int(camera_x * 0.38)
+            if -fw <= sx <= SCREEN_W + fw:
+                pts = [(sx, GROUND_Y - 12), (sx + fw//2, GROUND_Y - fh), (sx + fw, GROUND_Y - 12)]
+                pygame.draw.polygon(surface, (34, 88, 22), pts)
 
         for bg_x, th in self._trees:
             sx = bg_x - int(camera_x * 0.60)
@@ -382,6 +427,11 @@ class Level:
                          (0, GROUND_Y + 10, SCREEN_W, SCREEN_H - GROUND_Y - 10))
         pygame.draw.rect(surface, GRASS_COL, (0, GROUND_Y, SCREEN_W, 14))
         pygame.draw.rect(surface, (60, 130, 44), (0, GROUND_Y, SCREEN_W, 4))
+        # Grass tufts
+        _off = int(camera_x) % 14
+        for _gx in range(-_off, SCREEN_W + 14, 14):
+            pygame.draw.line(surface, (48, 148, 28), (_gx, GROUND_Y), (_gx - 3, GROUND_Y - 7), 1)
+            pygame.draw.line(surface, (48, 148, 28), (_gx, GROUND_Y), (_gx + 3, GROUND_Y - 7), 1)
 
     def _draw_platforms(self, surface, camera_x):
         if self.level_num == 1:
@@ -447,6 +497,13 @@ class Level:
 
     def _draw_bg_l4(self, surface, camera_x):
         t = self._torch_t
+        # Distant volcanic rock formations (parallax 0.22)
+        for bg_x, fh, fw in self._bg_formations:
+            sx = bg_x - int(camera_x * 0.22)
+            if sx + fw < 0 or sx > SCREEN_W:
+                continue
+            pts = [(sx, GROUND_Y - 6), (sx + fw//2, GROUND_Y - fh), (sx + fw, GROUND_Y - 6)]
+            pygame.draw.polygon(surface, (44, 14, 6), pts)
         # Ceiling rock
         pygame.draw.rect(surface, INFERNO_CEILING, (0, 0, SCREEN_W, 22))
         # Stalactites — bright orange glowing tips (parallax 0.65)
@@ -489,6 +546,11 @@ class Level:
             glow_int = int(abs(math.sin(t * 0.09 + cx2 * 0.01)) * 60)
             pygame.draw.line(surface, (200 + glow_int // 2, 60, 5),
                              (cx2, GROUND_Y + 2), (cx2 + 40, GROUND_Y + 12), 1)
+        # Ground rubble chunks
+        _off2 = int(camera_x) % 26
+        for _i in range(-_off2, SCREEN_W + 26, 26):
+            pygame.draw.rect(surface, (60, 20, 8), (_i, GROUND_Y + 3, 9, 5))
+            pygame.draw.rect(surface, (74, 26, 10), (_i + 13, GROUND_Y + 5, 7, 4))
 
     def _draw_bg_l5(self, surface, camera_x):
         t = self._torch_t
@@ -496,6 +558,15 @@ class Level:
 
         # Wall background (lavender)
         pygame.draw.rect(surface, NURSERY_WALL, (0, 0, SCREEN_W, GROUND_Y))
+
+        # Distant shelves on wall (parallax 0.12)
+        for bg_x, by, bw in self._far_shelves:
+            sx = bg_x - int(camera_x * 0.12)
+            if sx + bw < 0 or sx > SCREEN_W:
+                continue
+            pygame.draw.rect(surface, (158, 138, 176), (sx, by, bw, 8))
+            pygame.draw.rect(surface, (146, 126, 162), (sx, by + 8, 7, 44))
+            pygame.draw.rect(surface, (146, 126, 162), (sx + bw - 7, by + 8, 7, 44))
 
         # Stars on the wall (parallax 0.20)
         for bg_x, star_y in self._bg_stars:
@@ -568,6 +639,13 @@ class Level:
                 pygame.draw.rect(surface, (220, 245, 255), (ex2 - 1, y, 3, 2))
 
     def _draw_bg_l3(self, surface, camera_x):
+        # Distant city skyline silhouette (parallax 0.15)
+        for bg_x, fh, fw in self._far_skyline:
+            sx = bg_x - int(camera_x * 0.15)
+            if sx + fw < 0 or sx > SCREEN_W:
+                continue
+            pygame.draw.rect(surface, (95, 105, 118), (sx, GROUND_Y - fh, fw, fh))
+
         # Buildings (parallax 0.40)
         for bg_x, bh, bw, _ in self._buildings:
             sx = bg_x - int(camera_x * 0.40)
@@ -588,8 +666,19 @@ class Level:
             off = int(camera_x * 1.0) % 60
             pygame.draw.rect(surface, CITY_ROAD_LINE,
                              (i - off, GROUND_Y + 4, 30, 3))
+        # Sidewalk expansion joints
+        _off2 = int(camera_x) % 48
+        for _i in range(-_off2, SCREEN_W + 48, 48):
+            pygame.draw.line(surface, (72, 70, 65), (_i, GROUND_Y), (_i, GROUND_Y + 14), 1)
 
     def _draw_bg_l2(self, surface, camera_x):
+        # Far cave wall formations (parallax 0.25)
+        for bg_x, fh, fw in self._far_cave:
+            sx = bg_x - int(camera_x * 0.25)
+            if sx + fw < 0 or sx > SCREEN_W:
+                continue
+            pygame.draw.ellipse(surface, (20, 14, 32), (sx - fw//2, 0, fw, fh))
+
         # Ceiling rock
         pygame.draw.rect(surface, CAVE_STALA, (0, 0, SCREEN_W, 18))
 
@@ -625,3 +714,102 @@ class Level:
                          (0, GROUND_Y + 10, SCREEN_W, SCREEN_H - GROUND_Y - 10))
         pygame.draw.rect(surface, CAVE_GRASS, (0, GROUND_Y, SCREEN_W, 14))
         pygame.draw.rect(surface, CAVE_WALL,  (0, GROUND_Y, SCREEN_W, 4))
+        # Cobblestone detail
+        _off = int(camera_x) % 30
+        for _i in range(-_off, SCREEN_W + 30, 30):
+            _even = (_i // 30) % 2 == 0
+            pygame.draw.rect(surface, (50, 42, 64) if _even else (38, 32, 52), (_i, GROUND_Y + 2, 28, 5))
+            pygame.draw.rect(surface, (38, 32, 52) if _even else (50, 42, 64), (_i + 15, GROUND_Y + 7, 28, 5))
+
+    # ------------------------------------------------------------------ particles
+    def _init_particles(self, prng):
+        n = 120
+        ln = self.level_num
+        self._particles = []
+        for _ in range(n):
+            wx = prng.randint(0, int(WORLD_W + SCREEN_W))
+            if ln == 4:
+                y = prng.uniform(GROUND_Y - 110, GROUND_Y - 5)
+            elif ln in (1, 5):
+                y = prng.uniform(-30, GROUND_Y - 30)
+            else:
+                y = prng.uniform(15, GROUND_Y - 15)
+            vx, vy, ml = self._rand_pv(prng)
+            self._particles.append([float(wx), float(y), vx, vy, ml, ml])
+
+    def _rand_pv(self, prng):
+        ln = self.level_num
+        if ln == 1:
+            vx = prng.uniform(-0.5, -0.05)
+            vy = prng.uniform(0.25, 0.8)
+            ml = prng.randint(90, 250)
+        elif ln == 2:
+            vx = prng.uniform(-0.12, 0.12)
+            vy = prng.uniform(-0.06, 0.06)
+            ml = prng.randint(160, 400)
+        elif ln == 3:
+            vx = prng.uniform(-1.0, -0.15)
+            vy = prng.uniform(-0.25, 0.35)
+            ml = prng.randint(60, 170)
+        elif ln == 4:
+            vx = prng.uniform(-0.2, 0.2)
+            vy = prng.uniform(-1.6, -0.4)
+            ml = prng.randint(30, 85)
+        else:
+            vx = prng.uniform(-0.25, 0.25)
+            vy = prng.uniform(0.15, 0.5)
+            ml = prng.randint(90, 210)
+        return vx, vy, ml
+
+    def _update_draw_particles(self, surface, camera_x):
+        prng = self._prng
+        ln   = self.level_num
+        t    = self._torch_t
+        _SPARKLE = [(255, 150, 150), (150, 255, 150), (150, 150, 255), (255, 255, 130), (255, 180, 255)]
+
+        for p in self._particles:
+            p[0] += p[2]
+            p[1] += p[3]
+            p[4] -= 1
+            if p[4] <= 0 or p[1] < -30 or p[1] > GROUND_Y + 20:
+                p[0] = float(prng.randint(0, int(WORLD_W + SCREEN_W)))
+                if ln == 4:
+                    p[1] = float(prng.uniform(GROUND_Y - 80, GROUND_Y - 5))
+                elif ln in (1, 5):
+                    p[1] = float(prng.randint(-20, 5))
+                else:
+                    p[1] = float(prng.randint(5, GROUND_Y - 15))
+                vx, vy, ml = self._rand_pv(prng)
+                p[2], p[3], p[4], p[5] = vx, vy, ml, ml
+
+            sx = int(p[0]) - int(camera_x * 0.85)
+            if not (-20 <= sx <= SCREEN_W + 20):
+                continue
+            sy = int(p[1])
+            lf = p[4] / max(1, p[5])
+
+            if ln == 1:   # falling leaf — diamond shape
+                dim = max(30, int(255 * min(1.0, lf * 3)))
+                green = int(p[0]) % 3 < 2
+                base = (52, 128, 26) if green else (102, 68, 20)
+                col = (base[0] * dim // 255, base[1] * dim // 255, base[2] * dim // 255)
+                wobble = int(math.sin(t * 0.1 + p[0] * 0.01) * 2)
+                pts = [(sx, sy - 4 + wobble), (sx + 3, sy), (sx, sy + 3), (sx - 3, sy)]
+                pygame.draw.polygon(surface, col, pts)
+            elif ln == 2:  # cave dust mote — tiny circle
+                r = 2 if int(p[0]) % 3 < 2 else 1
+                dim = max(50, int(155 * lf))
+                pygame.draw.circle(surface, (dim, max(0, dim - 10), min(255, dim + 20)), (sx, sy), r)
+            elif ln == 3:  # city paper scrap — tiny rect
+                dim = max(80, int(220 * lf))
+                pygame.draw.rect(surface, (dim, max(0, dim - 12), max(0, dim - 22)), (sx - 2, sy - 1, 5, 3))
+            elif ln == 4:  # ember — bright orange rising dot
+                sz = 2 if lf > 0.4 else 1
+                flick = int(math.sin(t * 0.22 + p[0] * 0.03) * 25)
+                g = min(255, 65 + flick + int(105 * lf))
+                pygame.draw.circle(surface, (255, g, 8), (sx, sy), sz)
+            else:           # nursery sparkle — cross
+                col = _SPARKLE[int(p[0]) % len(_SPARKLE)]
+                s = max(1, int(3 * lf))
+                pygame.draw.line(surface, col, (sx - s, sy), (sx + s, sy), 1)
+                pygame.draw.line(surface, col, (sx, sy - s), (sx, sy + s), 1)
