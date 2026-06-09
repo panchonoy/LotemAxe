@@ -217,31 +217,63 @@ function show_infobox() {
         div.emscripten_border { border: 1px solid black; }
         div.thick_border { border: 4px solid black; }
 
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+        }
+
         /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
-        /* average size of droid screen 470dp x 320dp  */
         canvas.emscripten {
             border: 0px none;
-            background-color: transparent;
-            /* Maintain 16:9 landscape ratio — no stretching */
+            background-color: #000;
+            /* Maintain 16:9 landscape — letterbox/pillarbox as needed */
             width: min(100vw, 177.78vh);
             height: min(56.25vw, 100vh);
             z-index: 5;
-
             padding: 0;
             margin: auto;
-
-            position: absolute;
+            position: fixed;
             top: 0;
             bottom: 0;
             left: 0;
             right: 0;
+            display: block;
         }
 
         body {
             font-family: arial;
-            margin: 0;
-            padding: none;
-            background-color: #000;
+        }
+
+        /* Portrait-mode warning overlay */
+        #portrait-warn {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            background: #000;
+            color: #fff;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4em;
+            text-align: center;
+            gap: 20px;
+        }
+        #portrait-warn .rotate-icon {
+            font-size: 3em;
+            animation: spin90 1.2s ease-in-out infinite alternate;
+        }
+        @keyframes spin90 {
+            from { transform: rotate(0deg); }
+            to   { transform: rotate(90deg); }
+        }
+        @media (orientation: portrait) {
+            #portrait-warn { display: flex; }
+            canvas.emscripten { display: none; }
         }
 
         .topright{
@@ -314,6 +346,11 @@ height="720px"
     </canvas>
 
     <div id="infobox">Loading, please wait ...</div>
+
+    <div id="portrait-warn">
+        <div class="rotate-icon">&#x21BB;</div>
+        <div>Please rotate your device to landscape</div>
+    </div>
 
     <div id=html></div>
 

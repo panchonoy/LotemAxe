@@ -7,6 +7,7 @@ except ImportError:
 
 _sounds = {}
 _enabled = False
+_music_sound = None   # fallback: music loaded as Sound when mixer.music fails
 
 
 def init():
@@ -102,20 +103,39 @@ def play(name, volume=1.0):
 
 
 def play_music(path, volume=0.65, loops=-1):
-    """Start looping background music from a file path (mp3/ogg/wav)."""
+    """Start looping background music. Falls back to Sound if mixer.music fails."""
+    global _music_sound
     if not _enabled:
         return
+    # Stop any previous music/sound track
+    stop_music()
+    # Primary: pygame.mixer.music (works on desktop; may fail in WASM with MP3)
     try:
         pygame.mixer.music.load(path)
         pygame.mixer.music.set_volume(volume)
         pygame.mixer.music.play(loops)
+        return
     except Exception:
         pass
+    # Fallback: load as Sound object — works in pygbag/WASM
+    try:
+        _music_sound = pygame.mixer.Sound(path)
+        _music_sound.set_volume(volume)
+        _music_sound.play(loops=loops)
+    except Exception:
+        _music_sound = None
 
 
 def stop_music():
     """Stop any currently-playing background music."""
+    global _music_sound
     try:
         pygame.mixer.music.stop()
     except Exception:
         pass
+    if _music_sound is not None:
+        try:
+            _music_sound.stop()
+        except Exception:
+            pass
+        _music_sound = None
