@@ -553,12 +553,7 @@ class Boss:
             surface.blit(rotated, rr)
             return
 
-        t  = self._walk_t
-        et = self._eye_t
         p2 = self.phase2
-
-        body_col  = (min(255, BOSS_BODY[0]  + (40 if p2 else 0)), BOSS_BODY[1],  BOSS_BODY[2])
-        armor_col = (min(255, BOSS_ARMOR[0] + (30 if p2 else 0)), BOSS_ARMOR[1], BOSS_ARMOR[2])
 
         # Lunge telegraph: yellow glow during windup
         if self._lunge_state == 1:
@@ -576,25 +571,34 @@ class Boss:
                                  (sx2 + 3, sy + 28, self.W - 6, self.H - 52), 0)
                 streak_col = tuple(max(0, c - 50) for c in streak_col)
 
+        self._draw_body(surface, sx, sy)
+        _hp_bar(surface, sx + self.W // 2, sy, self.hp, self.HP_MAX, self.W + 22, 9, boss=True)
+
+    def _draw_body(self, surface, sx, sy):
+        t  = self._walk_t
+        p2 = self.phase2
+        body_col  = (min(255, BOSS_BODY[0]  + (40 if p2 else 0)), BOSS_BODY[1],  BOSS_BODY[2])
+        armor_col = (min(255, BOSS_ARMOR[0] + (30 if p2 else 0)), BOSS_ARMOR[1], BOSS_ARMOR[2])
+
         # Legs
         leg_swing = int(math.sin(t * 0.25) * 11) if self.vx != 0 else 0
         leg_y = sy + self.H - 26
-        pygame.draw.rect(surface, body_col,  (sx + 6,          leg_y + leg_swing,  16, 26))
-        pygame.draw.rect(surface, armor_col, (sx + 6,          leg_y + leg_swing,  16,  9))
-        pygame.draw.rect(surface, body_col,  (sx + self.W - 22, leg_y - leg_swing, 16, 26))
-        pygame.draw.rect(surface, armor_col, (sx + self.W - 22, leg_y - leg_swing, 16,  9))
+        pygame.draw.rect(surface, body_col,  (sx + 6,           leg_y + leg_swing,  16, 26))
+        pygame.draw.rect(surface, armor_col, (sx + 6,           leg_y + leg_swing,  16,  9))
+        pygame.draw.rect(surface, body_col,  (sx + self.W - 22, leg_y - leg_swing,  16, 26))
+        pygame.draw.rect(surface, armor_col, (sx + self.W - 22, leg_y - leg_swing,  16,  9))
 
         # Torso
         pygame.draw.rect(surface, body_col,  (sx + 3, sy + 28, self.W - 6, self.H - 52))
-        pygame.draw.rect(surface, armor_col, (sx + 3, sy + 28, self.W - 6, 22))  # chest
+        pygame.draw.rect(surface, armor_col, (sx + 3, sy + 28, self.W - 6, 22))
 
         # Shoulder pauldrons
-        pygame.draw.rect(surface, armor_col, (sx - 7,          sy + 26, 18, 22))
+        pygame.draw.rect(surface, armor_col, (sx - 7,           sy + 26, 18, 22))
         pygame.draw.rect(surface, armor_col, (sx + self.W - 11, sy + 26, 18, 22))
-        pygame.draw.circle(surface, BOSS_CROWN, (sx - 2,             sy + 26), 5)  # gem
-        pygame.draw.circle(surface, BOSS_CROWN, (sx + self.W + 2,    sy + 26), 5)
+        pygame.draw.circle(surface, BOSS_CROWN, (sx - 2,            sy + 26), 5)
+        pygame.draw.circle(surface, BOSS_CROWN, (sx + self.W + 2,   sy + 26), 5)
 
-        # Head (big)
+        # Head
         cx = sx + self.W // 2
         cy = sy + 17
         pygame.draw.circle(surface, BOSS_HEAD, (cx, cy), 19)
@@ -608,9 +612,8 @@ class Boss:
         for gx in (cx - 13, cx, cx + 13):
             pygame.draw.circle(surface, (220, 80, 80), (gx, cy - 19), 4)
 
-        # Pulsing evil eyes (faster + brighter in phase 2)
-        pulse_speed = 0.18 if p2 else 0.08
-        pulse = int(abs(math.sin(et * pulse_speed)) * 80)
+        # Pulsing evil eyes
+        pulse = int(abs(math.sin(self._eye_t * (0.18 if p2 else 0.08))) * 80)
         eye_col = (200 + pulse // 2, 20, 20) if p2 else (175 + pulse // 2, 20, 20)
         for sign in (-1, 1):
             ex = cx + sign * 8
@@ -627,11 +630,7 @@ class Boss:
             blade = [(hx + 1, sy + 28), (hx - 28, sy + 16),
                      (hx - 28, sy + 58), (hx + 1,  sy + 55)]
         pygame.draw.polygon(surface, AXE_BLADE, blade)
-        # Blade edge highlight
         pygame.draw.polygon(surface, WHITE, blade, 1)
-
-        # Small HP bar above head (big boss bar is in ui.py)
-        _hp_bar(surface, cx, sy, self.hp, self.HP_MAX, self.W + 22, 9, boss=True)
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,9 @@
 import pygame
-import numpy as np
+try:
+    import numpy as np
+    _numpy_ok = True
+except ImportError:
+    _numpy_ok = False
 
 _sounds = {}
 _enabled = False
@@ -7,6 +11,8 @@ _enabled = False
 
 def init():
     global _enabled
+    if not _numpy_ok:
+        return
     try:
         pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=2048)
         _enabled = True
