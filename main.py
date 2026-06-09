@@ -7,8 +7,9 @@ from game import Game, PLAYING
 
 async def main():
     pygame.init()
-    # No FULLSCREEN flag — browser canvas can't handle it; desktop gets windowed mode
-    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
+    # FULLSCREEN on desktop; browser canvas ignores/breaks with the flag
+    flags = 0 if sys.platform == 'emscripten' else pygame.FULLSCREEN
+    screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), flags)
     pygame.display.set_caption(TITLE)
     clock = pygame.time.Clock()
     game = Game(screen, clock)
