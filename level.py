@@ -78,6 +78,19 @@ class Level:
                  _rng3.randint(50, 110))
                 for _ in range(20)
             ]
+            # Confetti particles (screen-space, gentle fall + wobble)
+            _cfrng = random.Random(404)
+            _CONF_COLS = [(255, 80, 80), (80, 200, 255), (255, 220, 50),
+                          (100, 220, 100), (220, 100, 255)]
+            self._confetti = [
+                [float(_cfrng.randint(0, SCREEN_W)),
+                 float(_cfrng.randint(-SCREEN_H, SCREEN_H)),
+                 _cfrng.uniform(-0.4, 0.4),   # drift x
+                 _cfrng.uniform(0.7, 1.8),    # fall speed
+                 _cfrng.choice(_CONF_COLS)]
+                for _ in range(55)
+            ]
+            self._weather_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         elif level_num == 4:
             # Lava inferno cave
             self._sky = pygame.Surface((SCREEN_W, SCREEN_H))
@@ -139,6 +152,16 @@ class Level:
             self.tsunami_world_x = 0.0
             self.tsunami_active  = False
             self._tsunami_delay  = TSUNAMI_DELAY
+            # Rain particles (screen-space, fast diagonal fall)
+            _rrng = random.Random(303)
+            self._rain = [
+                [float(_rrng.randint(0, SCREEN_W + 80)),
+                 float(_rrng.randint(-SCREEN_H, SCREEN_H)),
+                 _rrng.uniform(-1.2, -0.4),   # lean left
+                 _rrng.uniform(7.0, 13.0)]    # fall speed
+                for _ in range(90)
+            ]
+            self._weather_surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         elif level_num == 1:
             # Mountains
             bg_range_m = int(WORLD_W * 0.22 + SCREEN_W)
@@ -169,6 +192,25 @@ class Level:
                 g = int(SKY_TOP[1] + (SKY_BOT[1] - SKY_TOP[1]) * t)
                 b = int(SKY_TOP[2] + (SKY_BOT[2] - SKY_TOP[2]) * t)
                 pygame.draw.line(self._sky, (r, g, b), (0, y), (SCREEN_W, y))
+            # Moving clouds (drift left, screen-space)
+            _crng = random.Random(901)
+            self._clouds = []
+            for _ci in range(6):
+                _cw = _crng.randint(110, 200)
+                _ch = _crng.randint(38, 62)
+                _cs = pygame.Surface((_cw + 44, _ch + 22), pygame.SRCALPHA)
+                _cs.fill((0, 0, 0, 0))
+                _cx2, _cy2 = (_cw + 44) // 2, (_ch + 22) // 2
+                pygame.draw.ellipse(_cs, (255, 255, 255, 38), (4, _cy2 - _ch // 4, _cw + 36, _ch // 2 + 6))
+                pygame.draw.circle(_cs, (255, 255, 255, 42), (_cx2 - _cw // 4, _cy2 - 2), _ch // 2)
+                pygame.draw.circle(_cs, (255, 255, 255, 44), (_cx2, _cy2 - 8), _ch // 2 + 7)
+                pygame.draw.circle(_cs, (255, 255, 255, 40), (_cx2 + _cw // 4, _cy2 - 4), _ch // 2 - 4)
+                self._clouds.append([
+                    float(_crng.randint(-60, SCREEN_W + 60)),
+                    _crng.randint(14, 110),
+                    _crng.uniform(0.06, 0.18),
+                    _cs
+                ])
             # Pre-bake sunbeam surfaces (screen-space atmospheric shafts)
             self._beams = []
             _lean = 52
@@ -430,6 +472,7 @@ class Level:
         if self.level_num == 3:
             self._draw_tsunami(surface, camera_x)
         self._update_draw_particles(surface, camera_x)
+        self._draw_weather(surface)
 
     def _draw_bg_l1(self, surface, camera_x):
         # Sunbeams — gentle screen-space sway, drawn behind mountains
@@ -437,6 +480,13 @@ class Level:
         for i, (bx, bs) in enumerate(self._beams):
             sx = bx + int(math.sin(t * 0.008 + i * 1.4) * 11)
             surface.blit(bs, (sx, 0))
+
+        # Moving clouds
+        for cloud in self._clouds:
+            cloud[0] -= cloud[2]
+            if cloud[0] + cloud[3].get_width() < -10:
+                cloud[0] = float(SCREEN_W + 20)
+            surface.blit(cloud[3], (int(cloud[0]), cloud[1]))
 
         for bg_x, peak_y, mw in self._mountains:
             sx = bg_x - int(camera_x * 0.22)
@@ -859,3 +909,29 @@ class Level:
         """Blit a pre-baked subtle color tint over the fully-drawn scene."""
         if self._grade_surf:
             surface.blit(self._grade_surf, (0, 0))
+
+    def _draw_weather(self, surface):
+        """Rain (L3) or confetti (L5) — screen-space weather particles."""
+        ws = getattr(self, '_weather_surf', None)
+        if ws is None:
+            return
+        ws.fill((0, 0, 0, 0))
+        if self.level_num == 3:
+            for r in self._rain:
+                r[0] += r[2]
+                r[1] += r[3]
+                if r[1] > SCREEN_H + 10:
+                    r[1] = float(random.randint(-40, -4))
+                    r[0] = float(random.randint(0, SCREEN_W + 80))
+                x1, y1 = int(r[0]), int(r[1])
+                pygame.draw.line(ws, (180, 205, 240, 85),
+                                 (x1, y1), (x1 + int(r[2] * 3), y1 + 9), 1)
+        elif self.level_num == 5:
+            for c in self._confetti:
+                c[0] += c[2] + math.sin(self._torch_t * 0.04 + c[1] * 0.02) * 0.4
+                c[1] += c[3]
+                if c[1] > SCREEN_H + 8:
+                    c[1] = float(random.randint(-30, -4))
+                    c[0] = float(random.randint(0, SCREEN_W))
+                pygame.draw.rect(ws, (*c[4], 200), (int(c[0]), int(c[1]), 5, 3))
+        surface.blit(ws, (0, 0))

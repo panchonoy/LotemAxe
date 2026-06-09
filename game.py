@@ -71,8 +71,10 @@ class Game:
             self._joysticks.append(j)
 
         self._init_fonts()
-        self._vignette  = self._build_vignette()
-        self._glow_surf = pygame.Surface((SCREEN_W, SCREEN_H))
+        self._vignette      = self._build_vignette()
+        self._glow_surf     = pygame.Surface((SCREEN_W, SCREEN_H))
+        self._red_flash_surf = pygame.Surface((SCREEN_W, SCREEN_H))
+        self._red_flash_surf.fill((220, 20, 20))
         self.hiscore              = _load_hiscore()
         self.num_players          = 1
         self.current_level        = 1
@@ -538,6 +540,8 @@ class Game:
         dead_this_frame = []
         for enemy in self.enemies:
             enemy.update(self.players)
+            if getattr(enemy, '_hit_flash', 0) > 0:
+                enemy._hit_flash -= 1
             hit, target_player = enemy.can_attack(self.players)
             if hit and target_player:
                 if target_player.take_damage(enemy.atk_dmg):
@@ -1316,8 +1320,28 @@ class Game:
         for p in self.particles:
             p.draw(self.screen, 0)   # particles already in screen-space
 
+        # Character foot shadows (drawn before entities so they appear beneath)
+        for _e in self.enemies:
+            if not _e.dead:
+                _esx = int(_e.x) + _e.W // 2 - cam_x
+                if -40 <= _esx <= SCREEN_W + 40:
+                    _esw = max(10, int(_e.W * 0.82))
+                    _ess = pygame.Surface((_esw, 7), pygame.SRCALPHA)
+                    pygame.draw.ellipse(_ess, (0, 0, 0, 50), (0, 0, _esw, 7))
+                    self.screen.blit(_ess, (_esx - _esw // 2, GROUND_Y - 5))
+
         for enemy in self.enemies:
             enemy.draw(self.screen, cam_x)
+
+        # Enemy hit-flash white overlay
+        for _e in self.enemies:
+            _hf = getattr(_e, '_hit_flash', 0)
+            if _hf > 0 and not (_e.dead and not getattr(_e, '_die_timer', 0)):
+                _esx = int(_e.x) - cam_x
+                _a = min(220, int(240 * _hf / 5))
+                _efl = pygame.Surface((_e.W, _e.H), pygame.SRCALPHA)
+                _efl.fill((255, 255, 255, _a))
+                self.screen.blit(_efl, (_esx, int(_e.y)))
 
         for rocket in self.rockets:
             rocket.draw(self.screen, cam_x)
@@ -1429,6 +1453,12 @@ class Game:
         for player in self.players:
             player.draw(self.screen, cam_x)
             player.draw_respawn_countdown(self.screen, cam_x)
+
+        # Damage red flash
+        _max_phf = max((p._hit_flash for p in self.players), default=0)
+        if _max_phf > 0:
+            self._red_flash_surf.set_alpha(int(72 * _max_phf / 8))
+            self.screen.blit(self._red_flash_surf, (0, 0))
 
         if self._magic_flash > 0:
             alpha = int(110 * self._magic_flash / 18)

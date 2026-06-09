@@ -99,6 +99,7 @@ class Grunt:
             self._die_timer = 36   # death anim frames
             self._die_vx    = kb_dir * 3.5
             self._die_vy    = -5.0
+        self._hit_flash = 5
         return True
 
     # -------------------------------------------------------------- update
@@ -424,6 +425,7 @@ class Boss:
             self._die_timer = 50
             self._die_vx    = kb_dir * 2.5
             self._die_vy    = -6.0
+        self._hit_flash = 5
         return True
 
     def update(self, players):
@@ -1200,6 +1202,7 @@ class Bomber(Grunt):
             self._die_timer = BOMBER_FUSE + 36   # fuse burns then death anim
             self._die_vx    = kb_dir * 1.5
             self._die_vy    = -2.0
+        self._hit_flash = 5
         return True
 
     def update(self, players):
@@ -1442,6 +1445,7 @@ class TeacherBoss(Boss):
             self._die_timer = 50
             self._die_vx = kb_dir * 2.5
             self._die_vy = -6.0
+        self._hit_flash = 5
         return True
 
     def draw(self, surface, cam_x):
@@ -1638,6 +1642,7 @@ class RollerBoss(Boss):
             self._die_timer = 50
             self._die_vx = kb_dir * 3.0
             self._die_vy = -5.5
+        self._hit_flash = 5
         return True
 
     def draw(self, surface, cam_x):
@@ -1794,6 +1799,7 @@ class FlyingEye(Grunt):
             self._die_timer = 36
             self._die_vx    = kb_dir * 3.5
             self._die_vy    = -5.0
+        self._hit_flash = 5
         return True
 
     def update(self, players):
@@ -2053,6 +2059,7 @@ class RocketBoss(Boss):
             self._die_timer = 50
             self._die_vx    = kb_dir * 2.5
             self._die_vy    = -6.0
+        self._hit_flash = 5
         return True
 
     def update(self, players):
@@ -2330,6 +2337,7 @@ class DoriBoss(Boss):
             self._die_timer = 60
             self._die_vx    = kb_dir * 2.0
             self._die_vy    = -7.0
+        self._hit_flash = 5
         return True
 
     def update(self, players):

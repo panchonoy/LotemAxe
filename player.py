@@ -71,6 +71,7 @@ class Player:
         self.atk_cd           = 0
         self.magic_cd         = 0
         self.hurt_timer       = 0
+        self._hit_flash       = 0
         self.dead             = False
         self.magic_just_used  = False
         self._hit_set         = set()
@@ -249,6 +250,7 @@ class Player:
         if self.hurt_timer > 0 or self.dead or self.out_of_lives:
             return False
         self.hp = max(0, self.hp - dmg)
+        self._hit_flash = 8
         self.hurt_timer = P_HURT_DUR
         self.vx = -self.facing * 5.0
         self.vy = -4.0
@@ -331,6 +333,7 @@ class Player:
         if self.atk_cd     > 0: self.atk_cd     -= 1
         if self.magic_cd   > 0: self.magic_cd   -= 1
         if self.hurt_timer > 0: self.hurt_timer -= 1
+        if self._hit_flash  > 0: self._hit_flash  -= 1
         if self.combo_window > 0: self.combo_window -= 1
         self._anim_t += 1
 
@@ -350,6 +353,12 @@ class Player:
         sx = int(self.x) - cam_x
         sy = int(self.y)
 
+        # Foot shadow (always at ground level)
+        _sw = max(12, int(P_W * 0.80))
+        _sh_surf = pygame.Surface((_sw, 7), pygame.SRCALPHA)
+        pygame.draw.ellipse(_sh_surf, (0, 0, 0, 52), (0, 0, _sw, 7))
+        surface.blit(_sh_surf, (sx + P_W // 2 - _sw // 2, GROUND_Y - 5))
+
         # Invincibility / hurt flicker
         if self.hurt_timer > 0 and (self.hurt_timer // 3) % 2 == 1:
             return
@@ -357,6 +366,10 @@ class Player:
         if self.sprite_char:
             self._draw_sprite(surface, sx, sy)
             self._draw_hud_extras(surface, sx, sy)
+            if self._hit_flash > 0:
+                _fl = pygame.Surface((P_W + 4, P_H + 4), pygame.SRCALPHA)
+                _fl.fill((255, 255, 255, min(220, int(240 * self._hit_flash / 8))))
+                surface.blit(_fl, (sx - 2, sy - 2))
             return
 
         bc = self._body_col
@@ -512,6 +525,11 @@ class Player:
         # Center horizontally; bottom-align to collision box bottom
         blit_x = sx + P_W // 2 - sw // 2
         blit_y = sy + P_H - t_h          # bottom of sprite = bottom of hitbox
+        # 4-direction dark silhouette outline
+        _outline = surf.copy()
+        _outline.fill((18, 14, 10, 255), special_flags=pygame.BLEND_RGBA_MULT)
+        for _dx, _dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            surface.blit(_outline, (blit_x + _dx, blit_y + _dy))
         surface.blit(surf, (blit_x, blit_y))
 
     def _draw_hud_extras(self, surface, sx, sy):
