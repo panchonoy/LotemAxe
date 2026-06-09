@@ -349,19 +349,19 @@ B_P2_CHARGE_CD = 80    # reduced charge cooldown in phase 2
 # ---------------------------------------------------------------------------
 TB_W           = 65
 TB_H           = 95
-TB_SPEED       = 1.4
-TB_HP          = 400
-TB_ATK_DMG     = 25    # Ruler Sweep damage
-TB_ATK_RANGE   = 250
-TB_ATK_CD      = 38
-TB_CHALK_DMG   = 18
-TB_CHALK_SPD   = 5
-TB_CHALK_CD    = 70
+TB_SPEED       = 1.23
+TB_HP          = 350
+TB_ATK_DMG     = 22    # Ruler Sweep damage
+TB_ATK_RANGE   = 220
+TB_ATK_CD      = 43
+TB_CHALK_DMG   = 16
+TB_CHALK_SPD   = 4.4
+TB_CHALK_CD    = 80
 TB_SCORE       = 4000
 TB_BODY        = ( 80,  80,  90)
 TB_HEAD        = (210, 180, 155)
 TB_SUIT        = ( 55,  55,  65)
-TB_REIN_CD     = 300   # frames between reinforcement waves (phase 2)
+TB_REIN_CD     = 340   # frames between reinforcement waves (phase 2)
 
 # ---------------------------------------------------------------------------
 # Roller Boss (Level 3 boss)
