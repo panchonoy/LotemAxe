@@ -163,21 +163,6 @@ class Game:
                 if -130 <= sx <= SCREEN_W + 130:
                     lights.append((sx, GROUND_Y - 85, 58 + flicker, 'warm'))
 
-        elif self.current_level == 4:
-            # Background lava rivulets (parallax 0.35)
-            for bg_x, _pw in self.level._lava_pools:
-                sx = bg_x - int(cam * 0.35)
-                if -130 <= sx <= SCREEN_W + 130:
-                    f2 = int(abs(math.sin(t * 0.11 + bg_x * 0.02)) * 10)
-                    lights.append((sx, GROUND_Y - 28, 52 + f2, 'hot'))
-            # Actual lava floor zones
-            for lx1, lx2 in self.level.lava:
-                lc = (lx1 + lx2) // 2
-                sx = lc - cam
-                if -130 <= sx <= SCREEN_W + 130:
-                    f3 = int(abs(math.sin(t * 0.09 + lc * 0.01)) * 14)
-                    lights.append((sx, GROUND_Y - 8, 84 + f3, 'hot'))
-
         return lights
 
     def _new_game(self, level_num=1):
@@ -280,11 +265,8 @@ class Game:
         # Death shockwave rings
         self._shockwaves = []
 
-        # Dynamic lighting for cave (L2) and inferno (L4)
-        if level_num in (2, 4):
-            self._light_layer = LightLayer(level_num)
-        else:
-            self._light_layer = None
+        # Dynamic lighting for cave (L2) only — L4 uses heat shimmer + color grade instead
+        self._light_layer = LightLayer(2) if level_num == 2 else None
 
         # Background music — look for music/level{n}.mp3 / .ogg / .wav
         music_dir = os.path.join(os.path.dirname(__file__), 'music')
