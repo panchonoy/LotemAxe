@@ -109,6 +109,15 @@ class Game:
         self.font_float    = pygame.font.SysFont('Arial', 16, bold=True)
         self.font_gameover = pygame.font.SysFont('Arial', 28, bold=True)
 
+    @staticmethod
+    def _draw_touch_btn(surface, rect, label, col, font, active=False):
+        s = pygame.Surface((rect.w, rect.h), pygame.SRCALPHA)
+        s.fill((*col, 220 if active else 155))
+        pygame.draw.rect(s, (255, 255, 255, 180), (0, 0, rect.w, rect.h), 2, border_radius=14)
+        surface.blit(s, rect.topleft)
+        lbl = font.render(label, True, (255, 255, 255))
+        surface.blit(lbl, lbl.get_rect(center=rect.center))
+
     def _build_vignette(self):
         surf = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
         for i in range(55):
@@ -485,6 +494,50 @@ class Game:
                 elif self.state == CREDITS:
                     if event.key == pygame.K_RETURN:
                         self._go_to_menu()
+
+            # Touch / click on menu and character-select buttons
+            if event.type == pygame.FINGERDOWN or \
+               (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1):
+                if event.type == pygame.FINGERDOWN:
+                    pos = (int(event.x * SCREEN_W), int(event.y * SCREEN_H))
+                else:
+                    pos = event.pos
+
+                if self.state == MENU:
+                    mb = getattr(self, '_menu_touch_btns', {})
+                    if mb.get('start', pygame.Rect(0,0,0,0)).collidepoint(pos):
+                        self.num_players = 1
+                        self.p1_color = 'asaf'  if sprites.is_ready() else 'blue'
+                        self.p2_color = 'lotem' if sprites.is_ready() else 'red'
+                        opts = self._COLOR_OPTIONS
+                        self._color_cursor = [opts.index(self.p1_color), opts.index(self.p2_color)]
+                        self._p_ready = [False, False]
+                        self.state = COLOR_SELECT
+                    elif mb.get('2p', pygame.Rect(0,0,0,0)).collidepoint(pos):
+                        self.num_players = 2
+                        self.p1_color = 'asaf'  if sprites.is_ready() else 'blue'
+                        self.p2_color = 'lotem' if sprites.is_ready() else 'red'
+                        opts = self._COLOR_OPTIONS
+                        self._color_cursor = [opts.index(self.p1_color), opts.index(self.p2_color)]
+                        self._p_ready = [False, False]
+                        self.state = COLOR_SELECT
+                    elif mb.get('berserk', pygame.Rect(0,0,0,0)).collidepoint(pos):
+                        self.berserk_mode = not self.berserk_mode
+
+                elif self.state == COLOR_SELECT:
+                    cb = getattr(self, '_cs_touch_btns', {})
+                    _KEY_MAP = {
+                        'p1_left':  pygame.K_LEFT,
+                        'p1_right': pygame.K_RIGHT,
+                        'p1_ready': pygame.K_RETURN,
+                        'p2_left':  pygame.K_a,
+                        'p2_right': pygame.K_d,
+                        'p2_ready': pygame.K_w,
+                    }
+                    for name, key in _KEY_MAP.items():
+                        if cb.get(name, pygame.Rect(0,0,0,0)).collidepoint(pos):
+                            self._handle_color_select(key)
+                            break
 
             # Joystick start button
             if event.type == pygame.JOYBUTTONDOWN:
@@ -1747,15 +1800,20 @@ class Game:
             t = self.font_small.render(text, True, col)
             self.screen.blit(t, t.get_rect(center=(SCREEN_W // 2, SCREEN_H // 2 + 20 + i * 28)))
 
-        # Berserk mode toggle
-        if self.berserk_mode:
-            bk_col  = (220, 40, 40)
-            bk_text = '⚡ BERSERK MODE: ON  (B to toggle)  — x2 score, faster enemies'
-        else:
-            bk_col  = (100, 100, 100)
-            bk_text = 'Berserk Mode: OFF  (B to toggle)'
-        bk_surf = self.font_hint.render(bk_text, True, bk_col)
-        self.screen.blit(bk_surf, bk_surf.get_rect(center=(SCREEN_W // 2, SCREEN_H - 22)))
+        # Touch buttons (tablet / web)
+        cx = SCREEN_W // 2
+        btns = {
+            'start':   pygame.Rect(cx - 100, 436, 200, 64),
+            '2p':      pygame.Rect(cx + 116,  448, 158, 48),
+            'berserk': pygame.Rect(cx - 274,  448, 148, 48),
+        }
+        self._menu_touch_btns = btns
+        self._draw_touch_btn(self.screen, btns['start'],   'START',     (35, 155, 55),  self.font_med)
+        self._draw_touch_btn(self.screen, btns['2p'],      '2 PLAYERS', (40, 100, 200), self.font_small)
+        bk_col = (180, 30, 30) if self.berserk_mode else (70, 70, 70)
+        bk_label = 'BERSERK: ON' if self.berserk_mode else 'BERSERK'
+        self._draw_touch_btn(self.screen, btns['berserk'], bk_label,    bk_col, self.font_small,
+                             active=self.berserk_mode)
 
 
     def _draw_color_select(self):
@@ -1824,6 +1882,40 @@ class Game:
                     pygame.draw.circle(self.screen, ring_col, (bx, by), r + 5, 3)
                     n_surf = self.font_small.render(name.upper(), True, ring_col)
                     self.screen.blit(n_surf, n_surf.get_rect(center=(bx, by + r + 18)))
+
+        # Touch navigation + ready buttons
+        by   = 464
+        cx   = SCREEN_W // 2
+        rdy  = getattr(self, '_p_ready', [False, False])
+        if self.num_players == 1:
+            cs_btns = {
+                'p1_left':  pygame.Rect(cx - 240, by, 54, 54),
+                'p1_right': pygame.Rect(cx + 186, by, 54, 54),
+                'p1_ready': pygame.Rect(cx -  88, by, 176, 54),
+            }
+        else:
+            cs_btns = {
+                'p1_left':  pygame.Rect( 18, by, 52, 52),
+                'p1_right': pygame.Rect( 78, by, 52, 52),
+                'p1_ready': pygame.Rect(140, by, 130, 52),
+                'p2_left':  pygame.Rect(694, by, 52, 52),
+                'p2_right': pygame.Rect(754, by, 52, 52),
+                'p2_ready': pygame.Rect(816, by, 140, 52),
+            }
+        self._cs_touch_btns = cs_btns
+        nav_col   = (70, 70, 140)
+        self._draw_touch_btn(self.screen, cs_btns['p1_left'],  '<', nav_col, self.font_med)
+        self._draw_touch_btn(self.screen, cs_btns['p1_right'], '>', nav_col, self.font_med)
+        p1_col = (25, 130, 25) if rdy[0] else (35, 155, 55)
+        self._draw_touch_btn(self.screen, cs_btns['p1_ready'],
+                             'READY!' if not rdy[0] else 'READY!', p1_col, self.font_med, active=rdy[0])
+        if self.num_players == 2:
+            self._draw_touch_btn(self.screen, cs_btns['p2_left'],  '<', nav_col, self.font_med)
+            self._draw_touch_btn(self.screen, cs_btns['p2_right'], '>', nav_col, self.font_med)
+            p2_col = (25, 130, 25) if rdy[1] else (35, 155, 55)
+            self._draw_touch_btn(self.screen, cs_btns['p2_ready'],
+                                 'P2 READY!' if not rdy[1] else 'P2 READY!',
+                                 p2_col, self.font_small, active=rdy[1])
 
         # Easy mode indicator
         if _is_easy_mode():
