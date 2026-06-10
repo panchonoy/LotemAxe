@@ -397,15 +397,20 @@ frameborder="1"
 
     <script type="application/javascript">
 
-    // Force 16:9 canvas size after pygbag sets its own dimensions
+    // Force 16:9 canvas after pygbag sets its dimensions.
+    // Dimension cache makes repeated calls free (no-op when nothing changed).
+    var _fixKey = '';
     function fixCanvas() {
         var c = document.getElementById('canvas');
         if (!c) return;
         var vw = window.innerWidth, vh = window.innerHeight;
-        var w = Math.min(vw, vh * 16 / 9);
-        var h = w * 9 / 16;
-        var left = (vw - w) / 2;
-        var top  = (vh - h) / 2;
+        var w    = Math.floor(Math.min(vw, vh * 16 / 9));
+        var h    = Math.floor(w * 9 / 16);
+        var left = Math.floor((vw - w) / 2);
+        var top  = Math.floor((vh - h) / 2);
+        var key  = w + ',' + h + ',' + left + ',' + top;
+        if (key === _fixKey) return;
+        _fixKey = key;
         c.style.setProperty('width',    w    + 'px', 'important');
         c.style.setProperty('height',   h    + 'px', 'important');
         c.style.setProperty('position', 'fixed',     'important');
@@ -414,16 +419,28 @@ frameborder="1"
         c.style.setProperty('margin',   '0',         'important');
     }
 
-    // Called by pygbag every time it resizes the canvas — correct it immediately
-    globalThis.__canvas_resized = (self, ecw, ech) => {
-        fixCanvas();
-    }
+    // Guard so we only call fixCanvas when pygbag actually resizes the canvas
+    var _lastCW = 0, _lastCH = 0;
+    globalThis.__canvas_resized = function(self, ecw, ech) {
+        if (ecw !== _lastCW || ech !== _lastCH) {
+            _lastCW = ecw; _lastCH = ech;
+            fixCanvas();
+        }
+    };
 
     window.addEventListener('resize', fixCanvas);
-    // Also apply at load time after pygbag has had time to set up
-    window.addEventListener('load', function() {
-        [500, 1500, 3000, 6000].forEach(function(t) { setTimeout(fixCanvas, t); });
-    });
+
+    // Poll until pygbag gives the canvas a real size, then lock it in
+    function _pollCanvas() {
+        var c = document.getElementById('canvas');
+        if (c && c.width > 1) {
+            fixCanvas();
+            setTimeout(fixCanvas, 500);
+        } else {
+            setTimeout(_pollCanvas, 200);
+        }
+    }
+    window.addEventListener('load', _pollCanvas);
 
     async function custom_onload(debug_hidden) {
         // this is called before anything python is loaded

@@ -264,6 +264,7 @@ class Game:
         self._glows = []
         # Death shockwave rings
         self._shockwaves = []
+        self._sw_surf    = pygame.Surface((168, 168), pygame.SRCALPHA)  # max r=80 → 168×168
         # Level countdown timer
         self._level_timer_frames = LEVEL_TIME_LIMIT * FPS
         self._timer_surf_cache   = None  # (key, surf, shad) — avoid font.render every frame
@@ -1560,9 +1561,9 @@ class Game:
             a     = int(220 * (1.0 - t))
             thick = max(1, 4 - int(t * 3))
             scr_x = sw[0] - cam_x
-            _ring = pygame.Surface((r * 2 + 8, r * 2 + 8), pygame.SRCALPHA)
-            pygame.draw.circle(_ring, (*sw[2][:3], a), (r + 4, r + 4), r, thick)
-            self.screen.blit(_ring, (scr_x - r - 4, sw[1] - r - 4))
+            self._sw_surf.fill((0, 0, 0, 0))
+            pygame.draw.circle(self._sw_surf, (*sw[2][:3], a), (84, 84), r, thick)
+            self.screen.blit(self._sw_surf, (scr_x - 84, sw[1] - 84))
             _live_sw.append(sw)
         self._shockwaves = _live_sw
 

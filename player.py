@@ -99,6 +99,13 @@ class Player:
         self._magic_regen_t  = 0
         self._prev_jump      = False  # edge-detect for joystick jump
 
+        # Pre-allocated SRCALPHA surfaces — reused every frame to avoid WASM allocation cost
+        _sw = max(12, int(P_W * 0.80))
+        self._sh_surf     = pygame.Surface((_sw, 7), pygame.SRCALPHA)
+        self._aura_surf   = pygame.Surface((P_W + 26, 20), pygame.SRCALPHA)
+        self._streak_surf = pygame.Surface((P_W + 10, P_H + 10), pygame.SRCALPHA)
+        self._fl_surf     = pygame.Surface((P_W + 4, P_H + 4), pygame.SRCALPHA)
+
         # Colour palette — use explicit color arg if given, else default by player_id
         if color is None:
             color = 'blue' if player_id == 1 else 'red'
@@ -367,9 +374,9 @@ class Player:
 
         # Foot shadow (always at ground level)
         _sw = max(12, int(P_W * 0.80))
-        _sh_surf = pygame.Surface((_sw, 7), pygame.SRCALPHA)
-        pygame.draw.ellipse(_sh_surf, (0, 0, 0, 52), (0, 0, _sw, 7))
-        surface.blit(_sh_surf, (sx + P_W // 2 - _sw // 2, GROUND_Y - 5))
+        self._sh_surf.fill((0, 0, 0, 0))
+        pygame.draw.ellipse(self._sh_surf, (0, 0, 0, 52), (0, 0, _sw, 7))
+        surface.blit(self._sh_surf, (sx + P_W // 2 - _sw // 2, GROUND_Y - 5))
 
         # Powerup glow aura (ground ellipse + vertical shimmer)
         if self.speed_boost_t > 0 or self.rage_t > 0:
@@ -379,14 +386,14 @@ class Player:
             else:
                 _ac = (255, 50, 10, int(110 * _pulse))
             _aw = P_W + 26
-            _aura = pygame.Surface((_aw, 20), pygame.SRCALPHA)
-            pygame.draw.ellipse(_aura, _ac, (0, 0, _aw, 20))
-            surface.blit(_aura, (sx - 13, GROUND_Y - 12))
+            self._aura_surf.fill((0, 0, 0, 0))
+            pygame.draw.ellipse(self._aura_surf, _ac, (0, 0, _aw, 20))
+            surface.blit(self._aura_surf, (sx - 13, GROUND_Y - 12))
             # Vertical streak above player
-            _streak = pygame.Surface((P_W + 10, P_H + 10), pygame.SRCALPHA)
             streak_col = (_ac[0], _ac[1], _ac[2], int(30 * _pulse))
-            pygame.draw.ellipse(_streak, streak_col, (0, 0, P_W + 10, P_H + 10))
-            surface.blit(_streak, (sx - 5, sy - 5))
+            self._streak_surf.fill((0, 0, 0, 0))
+            pygame.draw.ellipse(self._streak_surf, streak_col, (0, 0, P_W + 10, P_H + 10))
+            surface.blit(self._streak_surf, (sx - 5, sy - 5))
 
         # Invincibility / hurt flicker
         if self.hurt_timer > 0 and (self.hurt_timer // 3) % 2 == 1:
@@ -396,9 +403,8 @@ class Player:
             self._draw_sprite(surface, sx, sy)
             self._draw_hud_extras(surface, sx, sy)
             if self._hit_flash > 0:
-                _fl = pygame.Surface((P_W + 4, P_H + 4), pygame.SRCALPHA)
-                _fl.fill((255, 255, 255, min(220, int(240 * self._hit_flash / 8))))
-                surface.blit(_fl, (sx - 2, sy - 2))
+                self._fl_surf.fill((255, 255, 255, min(220, int(240 * self._hit_flash / 8))))
+                surface.blit(self._fl_surf, (sx - 2, sy - 2))
             return
 
         bc = self._body_col
