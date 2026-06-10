@@ -1674,32 +1674,36 @@ class Game:
 
         # ---- Per-player stats table ----
         num_p      = len(self.players)
-        col_width  = SCREEN_W // (num_p + 1)
-        row_h      = 28
-        tbl_top    = 210
+        row_h      = 30
+        tbl_top    = 215
         _STAT_ROWS = [
-            ('Enemies', 'kills'),
-            ('Dmg dealt', 'dmg_dealt'),
-            ('Dmg taken', 'dmg_taken'),
-            ('Specials', 'specials'),
-            ('Best streak', 'peak_streak'),
+            ('Enemies killed', 'kills'),
+            ('Dmg dealt',      'dmg_dealt'),
+            ('Dmg taken',      'dmg_taken'),
+            ('Specials used',  'specials'),
+            ('Best streak',    'peak_streak'),
         ]
 
+        # Fixed label column on the left; value columns share the remaining width
+        label_right = 230
+        val_zone    = SCREEN_W - label_right
+        val_xs      = [label_right + (i + 1) * val_zone // (num_p + 1)
+                       for i in range(num_p)]
+
         for pi, player in enumerate(self.players):
-            px = (pi + 1) * col_width
             char = player.char_name or f'P{player.player_id}'
             hdr  = self.font_med.render(char.upper(), True, WHITE)
-            self.screen.blit(hdr, hdr.get_rect(center=(px, tbl_top)))
+            self.screen.blit(hdr, hdr.get_rect(center=(val_xs[pi], tbl_top)))
 
         for ri, (label, key) in enumerate(_STAT_ROWS):
+            row_y = tbl_top + row_h * (ri + 1) + 6
             lbl_surf = self.font_small.render(label, True, (180, 180, 180))
-            self.screen.blit(lbl_surf, lbl_surf.get_rect(midright=(col_width - 8, tbl_top + row_h * (ri + 1) + 8)))
-            for pi, player in enumerate(self.players):
-                px   = (pi + 1) * col_width
-                val  = self._stats[pi][key] if pi < len(self._stats) else 0
-                vcol = WHITE if key != 'dmg_taken' else (255, 120, 120)
+            self.screen.blit(lbl_surf, lbl_surf.get_rect(midright=(label_right - 12, row_y)))
+            for pi in range(num_p):
+                val   = self._stats[pi][key] if pi < len(self._stats) else 0
+                vcol  = WHITE if key != 'dmg_taken' else (255, 120, 120)
                 v_surf = self.font_small.render(str(val), True, vcol)
-                self.screen.blit(v_surf, v_surf.get_rect(center=(px, tbl_top + row_h * (ri + 1) + 8)))
+                self.screen.blit(v_surf, v_surf.get_rect(center=(val_xs[pi], row_y)))
 
         # ---- Continue prompt ----
         blink = (pygame.time.get_ticks() // 500) % 2 == 0
