@@ -29,6 +29,7 @@ CREDITS      = 'credits'
 HISCORE_FILE  = os.path.join(os.path.dirname(__file__), 'highscore.txt')
 
 _yael_session = False   # True only after F6 or beating all 5 levels this session
+_easy_mode    = False   # True after F7 — reduced enemy HP/damage, extra lives
 
 
 def _is_yael_unlocked():
@@ -38,6 +39,15 @@ def _is_yael_unlocked():
 def _unlock_yael():
     global _yael_session
     _yael_session = True
+
+
+def _toggle_easy_mode():
+    global _easy_mode
+    _easy_mode = not _easy_mode
+
+
+def _is_easy_mode():
+    return _easy_mode
 
 
 def _load_hiscore():
@@ -218,6 +228,11 @@ class Game:
                 p.lives = min(PLAYER_LIVES_MAX, p.lives + self._pending_bonus_lives)
             self._pending_bonus_lives = 0
 
+        # Easy mode: start each level with extra lives
+        if _is_easy_mode() and level_num == 1:
+            for p in self.players:
+                p.lives = min(PLAYER_LIVES_MAX, p.lives + 4)
+
         self.enemies   = []
         self.particles = []
         self.camera_x  = 0.0
@@ -356,6 +371,10 @@ class Game:
             if not ready[1]:
                 self._color_cursor[1] = _advance(self._color_cursor[1], +1, self._color_cursor[0])
                 self.p2_color = opts[self._color_cursor[1]]
+
+        # F7 easy mode toggle
+        if key == pygame.K_F7:
+            _toggle_easy_mode()
 
         # F6 Yael unlock (secret)
         if key == pygame.K_F6:
@@ -550,6 +569,10 @@ class Game:
             for e in new_spawns:
                 e.SPEED   = e.SPEED * BERSERK_SPEED_MULT
                 e.atk_dmg = int(e.atk_dmg * BERSERK_DMG_MULT)
+        if _is_easy_mode():
+            for e in new_spawns:
+                e.hp      = max(1, e.hp // 2)
+                e.atk_dmg = max(1, e.atk_dmg // 2)
         self.enemies.extend(new_spawns)
 
         # Swarm warning flash
@@ -624,6 +647,9 @@ class Game:
             spawn_death(self.particles, scr_x, e.rect.centery, e.death_color)
             self._add_glow(scr_x, e.rect.centery, 52, e.death_color, 22)
             self._shockwaves.append([e.rect.centerx, e.rect.centery, e.death_color, 18])
+            if random.random() < POWERUP_DROP_CHANCE:
+                kind = random.choice(['speedstar', 'ragefist'])
+                self.pickups.append(Pickup(e.rect.centerx, kind))
 
         # Bomber explosions: fires after fuse countdown
         for enemy in self.enemies:
@@ -1798,6 +1824,13 @@ class Game:
                     pygame.draw.circle(self.screen, ring_col, (bx, by), r + 5, 3)
                     n_surf = self.font_small.render(name.upper(), True, ring_col)
                     self.screen.blit(n_surf, n_surf.get_rect(center=(bx, by + r + 18)))
+
+        # Easy mode indicator
+        if _is_easy_mode():
+            em_surf = self.font_med.render('EASY MODE ON  (F7 to toggle)', True, (80, 255, 120))
+        else:
+            em_surf = self.font_hint.render('F7 = Easy Mode', True, (160, 160, 160))
+        self.screen.blit(em_surf, em_surf.get_rect(center=(SCREEN_W // 2, SCREEN_H - 22)))
 
     def _draw_credits(self):
         # Lazy-load finish.png background

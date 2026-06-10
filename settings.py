@@ -102,8 +102,12 @@ P_HEAVY_CD  = 52
 # Lives & respawn
 PLAYER_LIVES       = 3
 PLAYER_LIVES_MAX   = 5   # max lives achievable via crystals
-RESPAWN_DELAY      = 180   # frames (~3 s)
-INVINCIBILITY_DUR  = 120   # post-respawn invincibility frames
+RESPAWN_DELAY      = 18    # frames (~0.3 s)
+INVINCIBILITY_DUR  = 90    # post-respawn invincibility frames
+
+SPEED_BOOST_DUR     = 360  # 6 s of speed powerup
+RAGE_DUR            = 300  # 5 s of rage powerup
+POWERUP_DROP_CHANCE = 0.15
 
 # --- Grunt (Barbarian minion) ---
 E_W         = 36

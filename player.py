@@ -73,6 +73,8 @@ class Player:
         self.hurt_timer       = 0
         self._hit_flash       = 0
         self._atk_trail       = []
+        self.speed_boost_t    = 0
+        self.rage_t           = 0
         self.dead             = False
         self.magic_just_used  = False
         self._hit_set         = set()
@@ -169,7 +171,7 @@ class Player:
             return
 
         # Movement
-        speed = P_SPEED * self._speed_mult
+        speed = P_SPEED * self._speed_mult * (1.6 if self.speed_boost_t > 0 else 1.0)
         self.vx = 0.0
         if inp['left']:
             self.vx = -speed
@@ -233,6 +235,8 @@ class Player:
             self.atk_cd           = P_ATK_CD
 
         self._hit_set.clear()
+        if self.rage_t > 0:
+            self.current_atk_dmg = int(self.current_atk_dmg * 2)
 
     def _fire_heavy_attack(self):
         self.is_heavy_atk     = True
@@ -244,6 +248,8 @@ class Player:
         self.current_atk_dur  = P_HEAVY_DUR
         self.atk_timer        = P_HEAVY_DUR
         self.atk_cd           = P_HEAVY_CD
+        if self.rage_t > 0:
+            self.current_atk_dmg = int(self.current_atk_dmg * 2)
         self._hit_set.clear()
 
     # ------------------------------------------------------------------ damage
@@ -279,6 +285,8 @@ class Player:
         self.atk_timer    = 0
         self.atk_cd       = 0
         self._atk_trail   = []
+        self.speed_boost_t = 0
+        self.rage_t        = 0
         self.combo_count  = 0
         self.combo_window = 0
         self.is_heavy_atk = False
@@ -333,9 +341,11 @@ class Player:
                 self._hit_set.clear()
                 self.is_heavy_atk = False
         if self.atk_cd     > 0: self.atk_cd     -= 1
-        if self.magic_cd   > 0: self.magic_cd   -= 1
-        if self.hurt_timer > 0: self.hurt_timer -= 1
-        if self._hit_flash  > 0: self._hit_flash  -= 1
+        if self.magic_cd      > 0: self.magic_cd      -= 1
+        if self.hurt_timer    > 0: self.hurt_timer    -= 1
+        if self._hit_flash    > 0: self._hit_flash    -= 1
+        if self.speed_boost_t > 0: self.speed_boost_t -= 1
+        if self.rage_t        > 0: self.rage_t        -= 1
         if self.combo_window > 0: self.combo_window -= 1
         self._anim_t += 1
 
@@ -360,6 +370,23 @@ class Player:
         _sh_surf = pygame.Surface((_sw, 7), pygame.SRCALPHA)
         pygame.draw.ellipse(_sh_surf, (0, 0, 0, 52), (0, 0, _sw, 7))
         surface.blit(_sh_surf, (sx + P_W // 2 - _sw // 2, GROUND_Y - 5))
+
+        # Powerup glow aura (ground ellipse + vertical shimmer)
+        if self.speed_boost_t > 0 or self.rage_t > 0:
+            _pulse = abs(math.sin(self._anim_t * 0.14)) * 0.45 + 0.55
+            if self.speed_boost_t > 0:
+                _ac = (255, 215, 30, int(110 * _pulse))
+            else:
+                _ac = (255, 50, 10, int(110 * _pulse))
+            _aw = P_W + 26
+            _aura = pygame.Surface((_aw, 20), pygame.SRCALPHA)
+            pygame.draw.ellipse(_aura, _ac, (0, 0, _aw, 20))
+            surface.blit(_aura, (sx - 13, GROUND_Y - 12))
+            # Vertical streak above player
+            _streak = pygame.Surface((P_W + 10, P_H + 10), pygame.SRCALPHA)
+            streak_col = (_ac[0], _ac[1], _ac[2], int(30 * _pulse))
+            pygame.draw.ellipse(_streak, streak_col, (0, 0, P_W + 10, P_H + 10))
+            surface.blit(_streak, (sx - 5, sy - 5))
 
         # Invincibility / hurt flicker
         if self.hurt_timer > 0 and (self.hurt_timer // 3) % 2 == 1:
@@ -543,9 +570,14 @@ class Player:
             self._atk_trail.append((blit_x, blit_y, idx, flip))
         else:
             self._atk_trail.clear()
-        # 4-direction dark silhouette outline
+        # 4-direction outline — colored when a powerup is active
         _outline = surf.copy()
-        _outline.fill((18, 14, 10, 255), special_flags=pygame.BLEND_RGBA_MULT)
+        if self.rage_t > 0:
+            _outline.fill((220, 30, 0, 255), special_flags=pygame.BLEND_RGBA_MULT)
+        elif self.speed_boost_t > 0:
+            _outline.fill((255, 200, 0, 255), special_flags=pygame.BLEND_RGBA_MULT)
+        else:
+            _outline.fill((18, 14, 10, 255), special_flags=pygame.BLEND_RGBA_MULT)
         for _dx, _dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
             surface.blit(_outline, (blit_x + _dx, blit_y + _dy))
         surface.blit(surf, (blit_x, blit_y))

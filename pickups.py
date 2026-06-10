@@ -4,10 +4,12 @@ from settings import *
 
 # Per-kind config: what it gives the player
 _CONFIGS = {
-    'milk':    {'hp': 25,  'crystals': 0,  'mana': 0,   'label': '+25 HP',      'color': (240, 245, 255)},
-    'salmon':  {'hp': 50,  'crystals': 0,  'mana': 0,   'label': '+50 HP',      'color': (255, 140, 100)},
-    'crystal': {'hp': 0,   'crystals': 1,  'mana': 0,   'label': '+Crystal',    'color': ( 80, 220, 255)},
-    'dog':     {'hp': 0,   'crystals': 10, 'mana': 100, 'label': 'Woof! +Mana', 'color': (160,  90,  30)},
+    'milk':      {'hp': 25,  'crystals': 0,  'mana': 0,   'label': '+25 HP',      'color': (240, 245, 255)},
+    'salmon':    {'hp': 50,  'crystals': 0,  'mana': 0,   'label': '+50 HP',      'color': (255, 140, 100)},
+    'crystal':   {'hp': 0,   'crystals': 1,  'mana': 0,   'label': '+Crystal',    'color': ( 80, 220, 255)},
+    'dog':       {'hp': 0,   'crystals': 10, 'mana': 100, 'label': 'Woof! +Mana', 'color': (160,  90,  30)},
+    'speedstar': {'hp': 0,   'crystals': 0,  'mana': 0,   'label': 'SPEED BOOST!','color': (255, 220,  40), 'buff': 'speed'},
+    'ragefist':  {'hp': 0,   'crystals': 0,  'mana': 0,   'label': 'RAGE!',       'color': (255,  55,  10), 'buff': 'rage'},
 }
 
 _SIZE = 20   # half-size of collision box
@@ -43,6 +45,11 @@ class Pickup:
                     player.lives += 1
         if cfg['mana']:
             player.magic = player.max_magic
+        buff = cfg.get('buff')
+        if buff == 'speed':
+            player.speed_boost_t = SPEED_BOOST_DUR
+        elif buff == 'rage':
+            player.rage_t = RAGE_DUR
         return cfg['label']
 
     def draw(self, surface, cam_x):
@@ -104,9 +111,33 @@ def _draw_dog(surface, sx, sy, col):
         pygame.draw.rect(surface, col, (lx, sy + 4, 4, 6))
 
 
+def _draw_speedstar(surface, sx, sy, col):
+    pts = []
+    for i in range(5):
+        oa = math.radians(-90 + i * 72)
+        ia = math.radians(-90 + i * 72 + 36)
+        pts.append((sx + 13 * math.cos(oa), sy + 13 * math.sin(oa)))
+        pts.append((sx +  5 * math.cos(ia), sy +  5 * math.sin(ia)))
+    pygame.draw.polygon(surface, col, pts)
+    pygame.draw.polygon(surface, (255, 255, 200), pts, 1)
+
+
+def _draw_ragefist(surface, sx, sy, col):
+    # Flame teardrop
+    pts = [(sx, sy - 15), (sx + 9, sy - 3), (sx + 6, sy + 9),
+           (sx - 6, sy + 9), (sx - 9, sy - 3)]
+    pygame.draw.polygon(surface, col, pts)
+    inner = (255, 210, 80)
+    pts2  = [(sx, sy - 9), (sx + 5, sy - 1), (sx + 3, sy + 5),
+             (sx - 3, sy + 5), (sx - 5, sy - 1)]
+    pygame.draw.polygon(surface, inner, pts2)
+
+
 _DRAWERS = {
-    'milk':    _draw_milk,
-    'salmon':  _draw_salmon,
-    'crystal': _draw_crystal,
-    'dog':     _draw_dog,
+    'milk':      _draw_milk,
+    'salmon':    _draw_salmon,
+    'crystal':   _draw_crystal,
+    'dog':       _draw_dog,
+    'speedstar': _draw_speedstar,
+    'ragefist':  _draw_ragefist,
 }
