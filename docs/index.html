@@ -437,13 +437,6 @@ frameborder="1"
     });
 
     window.addEventListener('load', function() {
-        // Watch for pygbag canvas attribute changes and re-apply sizing
-        var c = document.getElementById('canvas');
-        if (c && window.MutationObserver) {
-            new MutationObserver(function() {
-                if (window.innerWidth >= window.innerHeight) fixCanvas();
-            }).observe(c, { attributes: true, attributeFilter: ['style', 'width', 'height'] });
-        }
         // Best-effort landscape lock on mobile (requires fullscreen on some browsers)
         if (screen.orientation && screen.orientation.lock) {
             screen.orientation.lock('landscape').catch(function() {});
