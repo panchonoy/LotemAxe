@@ -109,6 +109,9 @@ SPEED_BOOST_DUR     = 360  # 6 s of speed powerup
 RAGE_DUR            = 300  # 5 s of rage powerup
 POWERUP_DROP_CHANCE = 0.15
 
+LEVEL_TIME_LIMIT    = 200  # seconds per level; TIME_OVER → game over
+TIME_STAR_THRESHOLD = 100  # seconds remaining needed for +1 star
+
 # --- Grunt (Barbarian minion) ---
 E_W         = 36
 E_H         = 64

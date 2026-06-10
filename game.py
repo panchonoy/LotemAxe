@@ -264,6 +264,8 @@ class Game:
         self._glows = []
         # Death shockwave rings
         self._shockwaves = []
+        # Level countdown timer
+        self._level_timer_frames = LEVEL_TIME_LIMIT * FPS
 
         # Dynamic lighting for cave (L2) only — L4 uses heat shimmer + color grade instead
         self._light_layer = LightLayer(2) if level_num == 2 else None
@@ -1162,6 +1164,13 @@ class Game:
             ft[4] -= 1   # tick down lifetime
         self._float_texts = [ft for ft in self._float_texts if ft[4] > 0]
 
+        # --- Level countdown timer ---
+        if self._victory_wait == 0 and any(not p.out_of_lives for p in self.players):
+            self._level_timer_frames -= 1
+            if self._level_timer_frames <= 0:
+                self._level_timer_frames = 0
+                self.state = GAME_OVER
+
         # --- Win/Lose ---
         boss_dead = self.level.boss_triggered and not any(
             isinstance(e, (Boss, TeacherBoss, RollerBoss, RocketBoss, DoriBoss)) and not e.dead
@@ -1194,6 +1203,9 @@ class Game:
             self._level_stars = 2
         else:
             self._level_stars = 1
+
+        if self._level_timer_frames > TIME_STAR_THRESHOLD * FPS:
+            self._level_stars = min(3, self._level_stars + 1)
 
         self._pending_bonus_lives = 0
         _min_hp = min((p.hp for p in self.players if not p.out_of_lives), default=0)
@@ -1578,6 +1590,23 @@ class Game:
 
         ui.draw_hud(self.screen, self.players, self.score, self.enemies)
 
+        # --- Level countdown timer ---
+        _tsecs = self._level_timer_frames // FPS
+        if _tsecs <= 10:
+            _tcol = (255, 50, 30)
+            _tblink = (self._level_timer_frames // 15) % 2 == 0
+            if not _tblink:
+                _tcol = (255, 160, 30)
+        elif _tsecs <= 30:
+            _tcol = (255, 160, 30)
+        else:
+            _tcol = (230, 230, 100)
+        _tsurf = self.font_small.render(f'TIME  {_tsecs}', True, _tcol)
+        _tshad = self.font_small.render(f'TIME  {_tsecs}', True, (0, 0, 0))
+        _tr    = _tsurf.get_rect(centerx=SCREEN_W // 2, top=36)
+        self.screen.blit(_tshad, (_tr.x + 1, _tr.y + 1))
+        self.screen.blit(_tsurf, _tr)
+
         # --- Hit streak counter above each player ---
         for i, player in enumerate(self.players):
             if player.dead or player.out_of_lives:
@@ -1672,10 +1701,18 @@ class Game:
         hi_surf = self.font_small.render(f'Score: {self.score:,}   {hi_txt}', True, hi_col)
         self.screen.blit(hi_surf, hi_surf.get_rect(center=(SCREEN_W // 2, 178)))
 
+        # ---- Time remaining ----
+        _tsecs_end = self._level_timer_frames // FPS
+        _tstar = _tsecs_end > TIME_STAR_THRESHOLD
+        _tcol2 = (100, 220, 100) if _tstar else (180, 180, 180)
+        _tstar_tag = '  ★ time bonus!' if _tstar else ''
+        _ts_surf = self.font_small.render(f'Time left: {_tsecs_end}s{_tstar_tag}', True, _tcol2)
+        self.screen.blit(_ts_surf, _ts_surf.get_rect(center=(SCREEN_W // 2, 198)))
+
         # ---- Per-player stats table ----
         num_p      = len(self.players)
         row_h      = 30
-        tbl_top    = 215
+        tbl_top    = 232
         _STAT_ROWS = [
             ('Enemies killed', 'kills'),
             ('Dmg dealt',      'dmg_dealt'),
