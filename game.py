@@ -1701,18 +1701,10 @@ class Game:
         hi_surf = self.font_small.render(f'Score: {self.score:,}   {hi_txt}', True, hi_col)
         self.screen.blit(hi_surf, hi_surf.get_rect(center=(SCREEN_W // 2, 178)))
 
-        # ---- Time remaining ----
-        _tsecs_end = self._level_timer_frames // FPS
-        _tstar = _tsecs_end > TIME_STAR_THRESHOLD
-        _tcol2 = (100, 220, 100) if _tstar else (180, 180, 180)
-        _tstar_tag = '  ★ time bonus!' if _tstar else ''
-        _ts_surf = self.font_small.render(f'Time left: {_tsecs_end}s{_tstar_tag}', True, _tcol2)
-        self.screen.blit(_ts_surf, _ts_surf.get_rect(center=(SCREEN_W // 2, 198)))
-
         # ---- Per-player stats table ----
         num_p      = len(self.players)
         row_h      = 30
-        tbl_top    = 232
+        tbl_top    = 215
         _STAT_ROWS = [
             ('Enemies killed', 'kills'),
             ('Dmg dealt',      'dmg_dealt'),
@@ -1741,6 +1733,18 @@ class Game:
                 vcol  = WHITE if key != 'dmg_taken' else (255, 120, 120)
                 v_surf = self.font_small.render(str(val), True, vcol)
                 self.screen.blit(v_surf, v_surf.get_rect(center=(val_xs[pi], row_y)))
+
+        # ---- Time remaining row ----
+        _t_row_y   = tbl_top + row_h * (len(_STAT_ROWS) + 1) + 6
+        _tsecs_end = self._level_timer_frames // FPS
+        _tstar     = _tsecs_end > TIME_STAR_THRESHOLD
+        _tcol3     = (100, 220, 100) if _tstar else (180, 180, 180)
+        _t_lbl     = self.font_small.render('Time left', True, (180, 180, 180))
+        self.screen.blit(_t_lbl, _t_lbl.get_rect(midright=(label_right - 12, _t_row_y)))
+        _t_tag     = '  ★' if _tstar else ''
+        _t_val     = self.font_small.render(f'{_tsecs_end}s{_t_tag}', True, _tcol3)
+        _val_cx    = label_right + (SCREEN_W - label_right) // 2
+        self.screen.blit(_t_val, _t_val.get_rect(center=(_val_cx, _t_row_y)))
 
         # ---- Continue prompt ----
         blink = (pygame.time.get_ticks() // 500) % 2 == 0
