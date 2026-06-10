@@ -1157,10 +1157,9 @@ class Game:
             self._level_stars = 1
 
         self._pending_bonus_lives = 0
-        if self._level_stars == 3:
-            self._pending_bonus_lives += 1          # 3-star performance reward
-        if self._lvl_deaths == 0:
-            self._pending_bonus_lives += 1          # "finish with full hearts" reward
+        _min_hp = min((p.hp for p in self.players if not p.out_of_lives), default=0)
+        if self._level_stars == 3 and _min_hp >= 3:
+            self._pending_bonus_lives = 1           # bonus heart: 3 stars + finish with 3+ HP
 
     def _award_combo_life(self, player, pid):
         if player.lives < PLAYER_LIVES_MAX:
