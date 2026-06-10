@@ -101,10 +101,12 @@ class Player:
 
         # Pre-allocated SRCALPHA surfaces — reused every frame to avoid WASM allocation cost
         _sw = max(12, int(P_W * 0.80))
-        self._sh_surf     = pygame.Surface((_sw, 7), pygame.SRCALPHA)
-        self._aura_surf   = pygame.Surface((P_W + 26, 20), pygame.SRCALPHA)
-        self._streak_surf = pygame.Surface((P_W + 10, P_H + 10), pygame.SRCALPHA)
-        self._fl_surf     = pygame.Surface((P_W + 4, P_H + 4), pygame.SRCALPHA)
+        self._sh_surf      = pygame.Surface((_sw, 7), pygame.SRCALPHA)
+        self._aura_surf    = pygame.Surface((P_W + 26, 20), pygame.SRCALPHA)
+        self._streak_surf  = pygame.Surface((P_W + 10, P_H + 10), pygame.SRCALPHA)
+        self._fl_surf      = pygame.Surface((P_W + 4, P_H + 4), pygame.SRCALPHA)
+        self._outline_cache = {}  # {(char, anim, idx, flip, col_r): tinted_surf}
+        self._trail_cache   = {}  # {(char, anim, tf, flip, alpha_idx): tinted_surf}
 
         # Colour palette — use explicit color arg if given, else default by player_id
         if color is None:
@@ -564,26 +566,37 @@ class Player:
         if self.atk_timer > 0:
             _TRAIL_ALPHA = (14, 28, 45, 65, 88)
             for i, (tx, ty, tf, tfl) in enumerate(self._atk_trail):
-                g = sprites.get_frame(char, anim, tf, t_h, flip=tfl)
-                if g is None:
-                    continue
-                gc = g.copy()
-                gc.fill((70, 150, 255, _TRAIL_ALPHA[min(i, 4)]),
-                        special_flags=pygame.BLEND_RGBA_MULT)
-                surface.blit(gc, (tx, ty))
+                _tkey = (char, anim, tf, tfl, min(i, 4))
+                if _tkey not in self._trail_cache:
+                    g = sprites.get_frame(char, anim, tf, t_h, flip=tfl)
+                    if g is None:
+                        self._trail_cache[_tkey] = None
+                    else:
+                        gc = g.copy()
+                        gc.fill((70, 150, 255, _TRAIL_ALPHA[min(i, 4)]),
+                                special_flags=pygame.BLEND_RGBA_MULT)
+                        self._trail_cache[_tkey] = gc
+                cached_trail = self._trail_cache[_tkey]
+                if cached_trail is not None:
+                    surface.blit(cached_trail, (tx, ty))
             if len(self._atk_trail) >= 5:
                 self._atk_trail.pop(0)
             self._atk_trail.append((blit_x, blit_y, idx, flip))
         else:
             self._atk_trail.clear()
-        # 4-direction outline — colored when a powerup is active
-        _outline = surf.copy()
+        # 4-direction outline — colored when a powerup is active; cache by (char,anim,idx,flip,col)
         if self.rage_t > 0:
-            _outline.fill((220, 30, 0, 255), special_flags=pygame.BLEND_RGBA_MULT)
+            _oc_col = (220, 30, 0, 255)
         elif self.speed_boost_t > 0:
-            _outline.fill((255, 200, 0, 255), special_flags=pygame.BLEND_RGBA_MULT)
+            _oc_col = (255, 200, 0, 255)
         else:
-            _outline.fill((18, 14, 10, 255), special_flags=pygame.BLEND_RGBA_MULT)
+            _oc_col = (18, 14, 10, 255)
+        _oc_key = (char, anim, idx, flip, _oc_col[0])
+        if _oc_key not in self._outline_cache:
+            _outline = surf.copy()
+            _outline.fill(_oc_col, special_flags=pygame.BLEND_RGBA_MULT)
+            self._outline_cache[_oc_key] = _outline
+        _outline = self._outline_cache[_oc_key]
         for _dx, _dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
             surface.blit(_outline, (blit_x + _dx, blit_y + _dy))
         surface.blit(surf, (blit_x, blit_y))

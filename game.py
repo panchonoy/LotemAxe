@@ -85,6 +85,18 @@ class Game:
         self._glow_surf     = pygame.Surface((SCREEN_W, SCREEN_H))
         self._red_flash_surf = pygame.Surface((SCREEN_W, SCREEN_H))
         self._red_flash_surf.fill((220, 20, 20))
+        # Per-frame allocation caches — avoid WASM Surface/font.render costs
+        self._esh_surfs          = {}  # enemy shadows keyed by pixel width
+        self._efl_surfs          = {}  # enemy hit-flash surfs keyed by (W, H)
+        self._float_text_cache   = {}  # float-text rendered surfs keyed by (text, col)
+        self._hz_strip10         = pygame.Surface((SCREEN_W, 10))
+        self._hz_strip6          = pygame.Surface((SCREEN_W, 6))
+        self._magic_flash_surf   = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        self._berserk_brd_surf   = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        pygame.draw.rect(self._berserk_brd_surf, (220, 20, 20, 55), (0, 0, SCREEN_W, SCREEN_H), 8)
+        self._berserk_lbl        = self.font_float.render('BERSERK', True, (220, 40, 40))
+        self._level_ov_surf      = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        self._level_ov_surf.fill((0, 0, 0, 170))
         self.hiscore              = _load_hiscore()
         self.num_players          = 1
         self.current_level        = 1
@@ -1405,9 +1417,11 @@ class Game:
                 _esx = int(_e.x) + _e.W // 2 - cam_x
                 if -40 <= _esx <= SCREEN_W + 40:
                     _esw = max(10, int(_e.W * 0.82))
-                    _ess = pygame.Surface((_esw, 7), pygame.SRCALPHA)
-                    pygame.draw.ellipse(_ess, (0, 0, 0, 50), (0, 0, _esw, 7))
-                    self.screen.blit(_ess, (_esx - _esw // 2, GROUND_Y - 5))
+                    if _esw not in self._esh_surfs:
+                        _s = pygame.Surface((_esw, 7), pygame.SRCALPHA)
+                        pygame.draw.ellipse(_s, (0, 0, 0, 50), (0, 0, _esw, 7))
+                        self._esh_surfs[_esw] = _s
+                    self.screen.blit(self._esh_surfs[_esw], (_esx - _esw // 2, GROUND_Y - 5))
 
         for enemy in self.enemies:
             enemy.draw(self.screen, cam_x)
@@ -1418,7 +1432,10 @@ class Game:
             if _hf > 0 and not (_e.dead and not getattr(_e, '_die_timer', 0)):
                 _esx = int(_e.x) - cam_x
                 _a = min(220, int(240 * _hf / 5))
-                _efl = pygame.Surface((_e.W, _e.H), pygame.SRCALPHA)
+                _efl_key = (_e.W, _e.H)
+                if _efl_key not in self._efl_surfs:
+                    self._efl_surfs[_efl_key] = pygame.Surface(_efl_key, pygame.SRCALPHA)
+                _efl = self._efl_surfs[_efl_key]
                 _efl.fill((255, 255, 255, _a))
                 self.screen.blit(_efl, (_esx, int(_e.y)))
 
@@ -1504,10 +1521,10 @@ class Game:
                 col = _HZ_COLS.get(kind, (200, 200, 200))
                 if hz_act:
                     # Solid active glow strip on the ground
-                    alpha = 160
-                    surf = pygame.Surface((sx2 - sx1, 10), pygame.SRCALPHA)
-                    surf.fill((*col, alpha))
-                    self.screen.blit(surf, (sx1, GROUND_Y - 4))
+                    strip_w = max(1, min(sx2 - sx1, SCREEN_W))
+                    self._hz_strip10.fill(col)
+                    self._hz_strip10.set_alpha(160)
+                    self.screen.blit(self._hz_strip10, (sx1, GROUND_Y - 4), (0, 0, strip_w, 10))
                     # Animated sparks / spikes
                     t = pygame.time.get_ticks()
                     for xi in range(sx1 + 4, sx2, 14):
@@ -1517,9 +1534,10 @@ class Game:
                     # Flicker warning
                     blink = (self._hz_timer // 8) % 2 == 0
                     if blink:
-                        surf = pygame.Surface((sx2 - sx1, 6), pygame.SRCALPHA)
-                        surf.fill((*col, 80))
-                        self.screen.blit(surf, (sx1, GROUND_Y - 4))
+                        strip_w = max(1, min(sx2 - sx1, SCREEN_W))
+                        self._hz_strip6.fill(col)
+                        self._hz_strip6.set_alpha(80)
+                        self.screen.blit(self._hz_strip6, (sx1, GROUND_Y - 4), (0, 0, strip_w, 6))
 
         # --- Destructible props ---
         for prop in self._props:
@@ -1541,9 +1559,8 @@ class Game:
 
         if self._magic_flash > 0:
             alpha = int(110 * self._magic_flash / 18)
-            flash = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-            flash.fill((50, 80, 220, alpha))
-            self.screen.blit(flash, (0, 0))
+            self._magic_flash_surf.fill((50, 80, 220, alpha))
+            self.screen.blit(self._magic_flash_surf, (0, 0))
 
         if self._light_layer:
             self._light_layer.render(self.screen, self._get_lights())
@@ -1624,11 +1641,8 @@ class Game:
 
         # --- Berserk mode border + label ---
         if self.berserk_mode:
-            brd = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-            pygame.draw.rect(brd, (220, 20, 20, 55), (0, 0, SCREEN_W, SCREEN_H), 8)
-            self.screen.blit(brd, (0, 0))
-            bl = self.font_float.render('BERSERK', True, (220, 40, 40))
-            self.screen.blit(bl, (SCREEN_W - bl.get_width() - 8, 6))
+            self.screen.blit(self._berserk_brd_surf, (0, 0))
+            self.screen.blit(self._berserk_lbl, (SCREEN_W - self._berserk_lbl.get_width() - 8, 6))
 
         # --- Team Blast indicator (2-player only) ---
         if self.num_players == 2:
@@ -1648,8 +1662,11 @@ class Game:
         for fx, fy, text, col, life in self._float_texts:
             max_life = 110 if text.startswith('!!') else 55
             alpha = max(0, int(255 * life / max_life))
-            font  = self.font_big if text.startswith('!!') else self.font_float
-            surf  = font.render(text, True, col)
+            _ft_key = (text, col)
+            if _ft_key not in self._float_text_cache:
+                font = self.font_big if text.startswith('!!') else self.font_float
+                self._float_text_cache[_ft_key] = font.render(text, True, col)
+            surf = self._float_text_cache[_ft_key]
             surf.set_alpha(alpha)
             self.screen.blit(surf, (fx - surf.get_width() // 2, fy))
 
@@ -1666,9 +1683,7 @@ class Game:
 
     def _draw_level_end(self):
         # Dark overlay over the game world
-        ov = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
-        ov.fill((0, 0, 0, 170))
-        self.screen.blit(ov, (0, 0))
+        self.screen.blit(self._level_ov_surf, (0, 0))
 
         # ---- Title ----
         if self.current_level >= 5:
