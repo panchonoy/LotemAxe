@@ -1754,47 +1754,62 @@ class Game:
                     self.screen.blit(n_surf, n_surf.get_rect(center=(bx, by + r + 18)))
 
     def _draw_credits(self):
-        self.screen.fill((8, 5, 18))
+        # Lazy-load finish.png background
+        if not hasattr(self, '_finish_bg'):
+            try:
+                _raw = pygame.image.load(
+                    os.path.join(os.path.dirname(__file__), 'images', 'finish.png')
+                ).convert()
+                self._finish_bg = pygame.transform.scale(_raw, (SCREEN_W, SCREEN_H))
+            except Exception:
+                self._finish_bg = None
 
-        title = self.font_title.render('YOU WIN!', True, SCORE_COL)
-        sh    = self.font_title.render('YOU WIN!', True, (70, 55, 0))
-        tr = title.get_rect(center=(SCREEN_W // 2, 85))
-        self.screen.blit(sh,    (tr.x + 4, tr.y + 4))
-        self.screen.blit(title, tr)
+        if self._finish_bg:
+            self.screen.blit(self._finish_bg, (0, 0))
+        else:
+            self.screen.fill((8, 5, 18))
 
-        hi_new = self.score >= self.hiscore
-        score_col = (255, 220, 50) if hi_new else WHITE
-        score_lbl = ('★ NEW HI-SCORE! ★' if hi_new else 'Final Score')
-        s = self.font_med.render(f'{score_lbl}  {self.score:,}', True, score_col)
-        self.screen.blit(s, s.get_rect(center=(SCREEN_W // 2, 170)))
-        hi = self.font_small.render(f'All-time best: {self.hiscore:,}', True, (180, 180, 180))
-        self.screen.blit(hi, hi.get_rect(center=(SCREEN_W // 2, 210)))
+        # Dark panels top + bottom so text is legible over the colourful image
+        _tp = pygame.Surface((SCREEN_W, 195), pygame.SRCALPHA)
+        _tp.fill((0, 0, 0, 178))
+        self.screen.blit(_tp, (0, 0))
+        _bp = pygame.Surface((SCREEN_W, 215), pygame.SRCALPHA)
+        _bp.fill((0, 0, 0, 158))
+        self.screen.blit(_bp, (0, SCREEN_H - 215))
 
-        yael_line = ('★ YAEL UNLOCKED! ★', (255, 120, 220)) if _is_yael_unlocked() else ('', WHITE)
-        lines = [
-            ('Game Design & Code', WHITE),
-            ('Lotem & Asaf', SCORE_COL),
-            ('', WHITE),
-            yael_line,
-            ('Art Assets', WHITE),
-            ('KayKit — Kay Lousberg (CC0)', (180, 200, 255)),
-            ('', WHITE),
-            ('Engine', WHITE),
-            ('Python + Pygame', (180, 200, 255)),
-            ('', WHITE),
-            ('Thanks for playing The NOYS!', (220, 180, 255)),
-        ]
-        y = 270
-        for text, col in lines:
-            if text:
-                t = self.font_small.render(text, True, col)
-                self.screen.blit(t, t.get_rect(center=(SCREEN_W // 2, y)))
-            y += 26
+        def _txt(font, text, col, cx, cy, shadow_off=3):
+            _sh = font.render(text, True, (0, 0, 0))
+            _s  = font.render(text, True, col)
+            _r  = _s.get_rect(center=(cx, cy))
+            self.screen.blit(_sh, (_r.x + shadow_off, _r.y + shadow_off))
+            self.screen.blit(_s,  _r)
+
+        # --- Top panel: title + score ---
+        _txt(self.font_title, 'YOU WIN!', (255, 235, 55), SCREEN_W // 2, 72, 4)
+
+        hi_new    = self.score >= self.hiscore
+        score_col = (255, 215, 50) if hi_new else WHITE
+        score_lbl = '★ NEW HI-SCORE! ★' if hi_new else 'Final Score'
+        _txt(self.font_med, f'{score_lbl}  {self.score:,}', score_col, SCREEN_W // 2, 138, 2)
+        _txt(self.font_small, f'All-time best: {self.hiscore:,}', (210, 210, 210),
+             SCREEN_W // 2, 170, 2)
+
+        # --- Bottom panel: credits + prompt ---
+        _by = SCREEN_H - 208
+        if _is_yael_unlocked():
+            _txt(self.font_small, '★ YAEL UNLOCKED! ★', (255, 120, 220), SCREEN_W // 2, _by, 2)
+            _by += 28
+        _txt(self.font_small,
+             'Game: Lotem & Asaf  |  Art: KayKit (CC0)  |  Engine: Python + Pygame',
+             (200, 220, 255), SCREEN_W // 2, _by, 2)
+        _by += 28
+        _txt(self.font_small, 'Thanks for playing The NOYS!', (230, 190, 255),
+             SCREEN_W // 2, _by, 2)
 
         blink = (pygame.time.get_ticks() // 600) % 2 == 0
         if blink:
-            back = self.font_med.render('Press ENTER to return to Menu', True, WHITE)
-            self.screen.blit(back, back.get_rect(center=(SCREEN_W // 2, SCREEN_H - 50)))
+            _txt(self.font_med, 'Press ENTER to return to Menu', WHITE,
+                 SCREEN_W // 2, SCREEN_H - 42, 2)
 
     def _draw_overlay(self, title, color, subtitle):
         overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
