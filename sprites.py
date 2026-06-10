@@ -128,6 +128,8 @@ _CHAR_BG = {
 
 # Cache: (char, anim, idx) → pygame.Surface (original-size RGBA)
 _cache: dict = {}
+# Scaled+flipped cache: (char, anim, idx, target_h, flip) → ready-to-blit Surface
+_scaled_cache: dict = {}
 _ready = False
 
 
@@ -293,16 +295,22 @@ def get_frame(char: str, anim: str, idx: int,
               target_h: int, flip: bool = False):
     """
     Return a scaled pygame Surface.  Returns None if sprites aren't loaded.
-    target_h is the desired render height in pixels.
+    Scaled+flipped results are cached so transform.scale/flip run only once per
+    unique (char, anim, frame, height, flip) combination.
     """
     frames_dict = _CHAR_FRAMES.get(char, {})
     rects = frames_dict.get(anim, [])
     if not rects:
         return None
-    surf = _cache.get((char, anim, idx % len(rects)))
+    frame_idx = idx % len(rects)
+    sc_key = (char, anim, frame_idx, target_h, flip)
+    cached = _scaled_cache.get(sc_key)
+    if cached is not None:
+        return cached
+
+    surf = _cache.get((char, anim, frame_idx))
     if surf is None:
         return None
-
     ow, oh = surf.get_size()
     if oh == 0:
         return None
@@ -310,6 +318,7 @@ def get_frame(char: str, anim: str, idx: int,
     scaled = pygame.transform.scale(surf, (scale_w, target_h))
     if flip:
         scaled = pygame.transform.flip(scaled, True, False)
+    _scaled_cache[sc_key] = scaled
     return scaled
 
 

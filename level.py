@@ -152,6 +152,9 @@ class Level:
             self.tsunami_world_x = 0.0
             self.tsunami_active  = False
             self._tsunami_delay  = TSUNAMI_DELAY
+            self._wave_surf      = pygame.Surface((SCREEN_W, SCREEN_H))
+            self._wave_surf.fill((20, 70, 200))
+            self._wave_surf.set_alpha(150)
             # Rain particles (screen-space, fast diagonal fall)
             _rrng = random.Random(303)
             self._rain = [
@@ -711,9 +714,7 @@ class Level:
             return
 
         # Translucent water body
-        wave_surf = pygame.Surface((draw_w, SCREEN_H), pygame.SRCALPHA)
-        wave_surf.fill((20, 70, 200, 150))
-        surface.blit(wave_surf, (0, 0))
+        surface.blit(self._wave_surf, (0, 0), (0, 0, draw_w, SCREEN_H))
 
         # Animated foam at the wave's right edge
         for y in range(0, SCREEN_H, 3):
