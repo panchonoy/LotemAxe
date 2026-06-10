@@ -75,6 +75,11 @@ class Game:
         self._glow_surf     = pygame.Surface((SCREEN_W, SCREEN_H))
         self._red_flash_surf = pygame.Surface((SCREEN_W, SCREEN_H))
         self._red_flash_surf.fill((220, 20, 20))
+        # Bloom + chromatic aberration pre-allocated surfaces
+        self._bloom_small = pygame.Surface((SCREEN_W // 4, SCREEN_H // 4))
+        self._bloom_up    = pygame.Surface((SCREEN_W, SCREEN_H))
+        self._ca_r        = pygame.Surface((SCREEN_W, SCREEN_H))
+        self._ca_c        = pygame.Surface((SCREEN_W, SCREEN_H))
         self.hiscore              = _load_hiscore()
         self.num_players          = 1
         self.current_level        = 1
@@ -123,6 +128,23 @@ class Game:
             pygame.draw.circle(self._glow_surf, (col[0] // 2, col[1] // 2, col[2] // 2), (sx, sy), max(1, r2 * 2 // 3))
             pygame.draw.circle(self._glow_surf, col, (sx, sy), max(1, r2 // 3))
         self.screen.blit(self._glow_surf, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+
+    def _apply_bloom(self):
+        pygame.transform.scale(self.screen, (SCREEN_W // 4, SCREEN_H // 4), self._bloom_small)
+        pygame.transform.scale(self._bloom_small, (SCREEN_W, SCREEN_H), self._bloom_up)
+        self._bloom_up.fill((48, 48, 48), special_flags=pygame.BLEND_RGB_MULT)
+        self.screen.blit(self._bloom_up, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
+
+    def _apply_ca(self):
+        ca_off = min(4, int(self._shake * 0.5))
+        if ca_off < 2:
+            return
+        self._ca_r.blit(self.screen, (0, 0))
+        self._ca_c.blit(self.screen, (0, 0))
+        self._ca_r.fill((220, 18, 18), special_flags=pygame.BLEND_RGB_MULT)
+        self._ca_c.fill((12, 220, 220), special_flags=pygame.BLEND_RGB_MULT)
+        self.screen.blit(self._ca_r, (-ca_off, 0), special_flags=pygame.BLEND_RGB_ADD)
+        self.screen.blit(self._ca_c, (ca_off,  0), special_flags=pygame.BLEND_RGB_ADD)
 
     def _get_lights(self):
         """Return list of (screen_x, screen_y, radius, kind) for the current frame."""
@@ -253,6 +275,8 @@ class Game:
 
         # Glow bursts (additive blended combat effects)
         self._glows = []
+        # Death shockwave rings
+        self._shockwaves = []
 
         # Dynamic lighting for cave (L2) and inferno (L4)
         if level_num in (2, 4):
@@ -599,6 +623,7 @@ class Game:
             scr_x = e.rect.centerx - int(self.camera_x)
             spawn_death(self.particles, scr_x, e.rect.centery, e.death_color)
             self._add_glow(scr_x, e.rect.centery, 52, e.death_color, 22)
+            self._shockwaves.append([e.rect.centerx, e.rect.centery, e.death_color, 18])
 
         # Bomber explosions: fires after fuse countdown
         for enemy in self.enemies:
@@ -1309,6 +1334,8 @@ class Game:
                 self._draw_game_over()
             elif self.state in (VICTORY, LEVEL_END):
                 self._draw_level_end()
+            self._apply_bloom()
+            self._apply_ca()
         pygame.display.flip()
 
     def _draw_world(self, cam_x):
@@ -1470,6 +1497,24 @@ class Game:
             self._light_layer.render(self.screen, self._get_lights())
 
         self._draw_glows()
+
+        # Death shockwave expanding rings
+        _live_sw = []
+        for sw in self._shockwaves:
+            sw[3] -= 1
+            if sw[3] <= 0:
+                continue
+            t     = 1.0 - sw[3] / 18
+            r     = max(2, int(80 * t))
+            a     = int(220 * (1.0 - t))
+            thick = max(1, 4 - int(t * 3))
+            scr_x = sw[0] - cam_x
+            _ring = pygame.Surface((r * 2 + 8, r * 2 + 8), pygame.SRCALPHA)
+            pygame.draw.circle(_ring, (*sw[2][:3], a), (r + 4, r + 4), r, thick)
+            self.screen.blit(_ring, (scr_x - r - 4, sw[1] - r - 4))
+            _live_sw.append(sw)
+        self._shockwaves = _live_sw
+
         self.level.draw_color_grade(self.screen)
         self.screen.blit(self._vignette, (0, 0))
 

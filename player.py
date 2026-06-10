@@ -72,6 +72,7 @@ class Player:
         self.magic_cd         = 0
         self.hurt_timer       = 0
         self._hit_flash       = 0
+        self._atk_trail       = []
         self.dead             = False
         self.magic_just_used  = False
         self._hit_set         = set()
@@ -277,6 +278,7 @@ class Player:
         self.hurt_timer   = INVINCIBILITY_DUR   # invincibility frames on respawn
         self.atk_timer    = 0
         self.atk_cd       = 0
+        self._atk_trail   = []
         self.combo_count  = 0
         self.combo_window = 0
         self.is_heavy_atk = False
@@ -525,6 +527,22 @@ class Player:
         # Center horizontally; bottom-align to collision box bottom
         blit_x = sx + P_W // 2 - sw // 2
         blit_y = sy + P_H - t_h          # bottom of sprite = bottom of hitbox
+        # Attack motion trail: ghost echoes fade from newest to oldest
+        if self.atk_timer > 0:
+            _TRAIL_ALPHA = (14, 28, 45, 65, 88)
+            for i, (tx, ty, tf, tfl) in enumerate(self._atk_trail):
+                g = sprites.get_frame(char, anim, tf, t_h, flip=tfl)
+                if g is None:
+                    continue
+                gc = g.copy()
+                gc.fill((70, 150, 255, _TRAIL_ALPHA[min(i, 4)]),
+                        special_flags=pygame.BLEND_RGBA_MULT)
+                surface.blit(gc, (tx, ty))
+            if len(self._atk_trail) >= 5:
+                self._atk_trail.pop(0)
+            self._atk_trail.append((blit_x, blit_y, idx, flip))
+        else:
+            self._atk_trail.clear()
         # 4-direction dark silhouette outline
         _outline = surf.copy()
         _outline.fill((18, 14, 10, 255), special_flags=pygame.BLEND_RGBA_MULT)
