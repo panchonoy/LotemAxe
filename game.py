@@ -266,6 +266,7 @@ class Game:
         self._shockwaves = []
         # Level countdown timer
         self._level_timer_frames = LEVEL_TIME_LIMIT * FPS
+        self._timer_surf_cache   = None  # (key, surf, shad) — avoid font.render every frame
 
         # Dynamic lighting for cave (L2) only — L4 uses heat shimmer + color grade instead
         self._light_layer = LightLayer(2) if level_num == 2 else None
@@ -1590,20 +1591,21 @@ class Game:
 
         ui.draw_hud(self.screen, self.players, self.score, self.enemies)
 
-        # --- Level countdown timer ---
+        # --- Level countdown timer (surfaces cached — only re-render when text/colour changes) ---
         _tsecs = self._level_timer_frames // FPS
         if _tsecs <= 10:
-            _tcol = (255, 50, 30)
-            _tblink = (self._level_timer_frames // 15) % 2 == 0
-            if not _tblink:
-                _tcol = (255, 160, 30)
+            _tcol = (255, 50, 30) if (self._level_timer_frames // 15) % 2 == 0 else (255, 160, 30)
         elif _tsecs <= 30:
             _tcol = (255, 160, 30)
         else:
             _tcol = (230, 230, 100)
-        _tsurf = self.font_small.render(f'TIME  {_tsecs}', True, _tcol)
-        _tshad = self.font_small.render(f'TIME  {_tsecs}', True, (0, 0, 0))
-        _tr    = _tsurf.get_rect(centerx=SCREEN_W // 2, top=36)
+        _cache_key = (_tsecs, _tcol)
+        if self._timer_surf_cache is None or self._timer_surf_cache[0] != _cache_key:
+            _tsurf = self.font_small.render(f'TIME  {_tsecs}', True, _tcol)
+            _tshad = self.font_small.render(f'TIME  {_tsecs}', True, (0, 0, 0))
+            self._timer_surf_cache = (_cache_key, _tsurf, _tshad)
+        _, _tsurf, _tshad = self._timer_surf_cache
+        _tr = _tsurf.get_rect(centerx=SCREEN_W // 2, top=36)
         self.screen.blit(_tshad, (_tr.x + 1, _tr.y + 1))
         self.screen.blit(_tsurf, _tr)
 

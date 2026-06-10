@@ -259,7 +259,7 @@ function show_infobox() {
         }
         @media (orientation: portrait) {
             #portrait-warn { display: flex; }
-            /* canvas stays visible in portrait — game letterboxes instead of blocking */
+            canvas.emscripten { display: none; }
         }
 
         .topright{
@@ -420,14 +420,9 @@ frameborder="1"
     }
 
     window.addEventListener('resize', fixCanvas);
-    window.addEventListener('orientationchange', function() { setTimeout(fixCanvas, 200); });
-
+    // Also apply at load time after pygbag has had time to set up
     window.addEventListener('load', function() {
-        // Best-effort landscape lock on mobile (requires fullscreen on some browsers)
-        if (screen.orientation && screen.orientation.lock) {
-            screen.orientation.lock('landscape').catch(function() {});
-        }
-        [500, 1500, 3000, 6000, 10000, 20000].forEach(function(t) { setTimeout(fixCanvas, t); });
+        [500, 1500, 3000, 6000].forEach(function(t) { setTimeout(fixCanvas, t); });
     });
 
     async function custom_onload(debug_hidden) {
