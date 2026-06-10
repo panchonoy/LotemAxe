@@ -85,11 +85,6 @@ class Game:
         self._glow_surf     = pygame.Surface((SCREEN_W, SCREEN_H))
         self._red_flash_surf = pygame.Surface((SCREEN_W, SCREEN_H))
         self._red_flash_surf.fill((220, 20, 20))
-        # Bloom + chromatic aberration pre-allocated surfaces
-        self._bloom_small = pygame.Surface((SCREEN_W // 4, SCREEN_H // 4))
-        self._bloom_up    = pygame.Surface((SCREEN_W, SCREEN_H))
-        self._ca_r        = pygame.Surface((SCREEN_W, SCREEN_H))
-        self._ca_c        = pygame.Surface((SCREEN_W, SCREEN_H))
         self.hiscore              = _load_hiscore()
         self.num_players          = 1
         self.current_level        = 1
@@ -147,23 +142,6 @@ class Game:
             pygame.draw.circle(self._glow_surf, (col[0] // 2, col[1] // 2, col[2] // 2), (sx, sy), max(1, r2 * 2 // 3))
             pygame.draw.circle(self._glow_surf, col, (sx, sy), max(1, r2 // 3))
         self.screen.blit(self._glow_surf, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
-
-    def _apply_bloom(self):
-        pygame.transform.scale(self.screen, (SCREEN_W // 4, SCREEN_H // 4), self._bloom_small)
-        pygame.transform.scale(self._bloom_small, (SCREEN_W, SCREEN_H), self._bloom_up)
-        self._bloom_up.fill((48, 48, 48), special_flags=pygame.BLEND_RGB_MULT)
-        self.screen.blit(self._bloom_up, (0, 0), special_flags=pygame.BLEND_RGB_ADD)
-
-    def _apply_ca(self):
-        ca_off = min(4, int(self._shake * 0.5))
-        if ca_off < 2:
-            return
-        self._ca_r.blit(self.screen, (0, 0))
-        self._ca_c.blit(self.screen, (0, 0))
-        self._ca_r.fill((220, 18, 18), special_flags=pygame.BLEND_RGB_MULT)
-        self._ca_c.fill((12, 220, 220), special_flags=pygame.BLEND_RGB_MULT)
-        self.screen.blit(self._ca_r, (-ca_off, 0), special_flags=pygame.BLEND_RGB_ADD)
-        self.screen.blit(self._ca_c, (ca_off,  0), special_flags=pygame.BLEND_RGB_ADD)
 
     def _get_lights(self):
         """Return list of (screen_x, screen_y, radius, kind) for the current frame."""
@@ -1414,8 +1392,6 @@ class Game:
                 self._draw_game_over()
             elif self.state in (VICTORY, LEVEL_END):
                 self._draw_level_end()
-            self._apply_bloom()
-            self._apply_ca()
         pygame.display.flip()
 
     def _draw_world(self, cam_x):
