@@ -813,10 +813,11 @@ class Cannoneer(Grunt):
 
     def __init__(self, x, y):
         super().__init__(x, y)
-        self._cannonballs  = []   # [x, y, vx, vy]
+        self._cannonballs  = []
         self.pending_hits  = []
-        self.pending_blasts = []  # (world_x, world_y) — game.py spawns explosion vfx
+        self.pending_blasts = []
         self._fire_cd = random.randint(CN_FIRE_CD // 2, CN_FIRE_CD)
+        self._ball_shadow = pygame.Surface((40, 10), pygame.SRCALPHA)  # reused each frame
 
     def can_attack(self, players):
         return False, None   # damage via pending_hits only
@@ -916,9 +917,9 @@ class Cannoneer(Grunt):
                 t_land = (-vy_b + math.sqrt(disc)) / GRAVITY
                 shadow_x = bx + int(vx_b * t_land)
                 alpha = max(30, min(180, int(180 * (1.0 - t_land / 60.0))))
-                shadow = pygame.Surface((40, 10), pygame.SRCALPHA)
-                pygame.draw.ellipse(shadow, (30, 10, 60, alpha), (0, 0, 40, 10))
-                surface.blit(shadow, (shadow_x - 20, GROUND_Y - 6))
+                self._ball_shadow.fill((0, 0, 0, 0))
+                pygame.draw.ellipse(self._ball_shadow, (30, 10, 60, alpha), (0, 0, 40, 10))
+                surface.blit(self._ball_shadow, (shadow_x - 20, GROUND_Y - 6))
             if -CN_PROJ_SIZE - 5 <= bx <= SCREEN_W + CN_PROJ_SIZE + 5:
                 pygame.draw.circle(surface, (25, 15, 45), (bx, by), CN_PROJ_SIZE)
                 pygame.draw.circle(surface, (65, 45, 90), (bx, by), CN_PROJ_SIZE - 2)
@@ -1550,9 +1551,13 @@ class RollerBoss(Boss):
 
     def __init__(self, x, y):
         super().__init__(x, y)
-        self._spin_t    = 0   # spin attack timer
+        self._spin_t    = 0
         self._spin_cd   = 60
         self._spin_angle = 0.0
+        self._streak_surf = pygame.Surface((self.W, self.H - 30), pygame.SRCALPHA)
+        self._spin_surf   = pygame.Surface((RB_SPIN_RAD * 2, RB_SPIN_RAD * 2), pygame.SRCALPHA)
+        pygame.draw.circle(self._spin_surf, (100, 200, 255, 60),
+                           (RB_SPIN_RAD, RB_SPIN_RAD), RB_SPIN_RAD)
 
     def _emit_wave(self, wave_num):
         pass  # RollerBoss relies on charge + spin; no minion waves
@@ -1672,17 +1677,13 @@ class RollerBoss(Boss):
             for i in range(1, 5):
                 sxs = sx - self.facing * i * 12
                 fade = max(0, 180 - i * 40)
-                streak = pygame.Surface((self.W, self.H - 30), pygame.SRCALPHA)
-                streak.fill((*RB_BODY, fade))
-                surface.blit(streak, (sxs, sy + 15))
+                self._streak_surf.fill((*RB_BODY, fade))
+                surface.blit(self._streak_surf, (sxs, sy + 15))
 
         # Spin glow
         if self._spin_t > 0:
-            spin_surf = pygame.Surface((RB_SPIN_RAD * 2, RB_SPIN_RAD * 2), pygame.SRCALPHA)
-            pygame.draw.circle(spin_surf, (100, 200, 255, 60),
-                               (RB_SPIN_RAD, RB_SPIN_RAD), RB_SPIN_RAD)
-            surface.blit(spin_surf, (sx + self.W // 2 - RB_SPIN_RAD,
-                                     sy + self.H // 2 - RB_SPIN_RAD))
+            surface.blit(self._spin_surf, (sx + self.W // 2 - RB_SPIN_RAD,
+                                           sy + self.H // 2 - RB_SPIN_RAD))
 
         self._draw_body(surface, sx, sy)
         _hp_bar(surface, sx + self.W // 2, sy, self.hp, self.HP_MAX,
@@ -2234,6 +2235,12 @@ class ToyBlock:
         self._t     = 0
         self._col   = self._COLS[int(x) % len(self._COLS)]
         self._vy    = vy
+        # Pre-build base surface; cache rotated frames by angle index (9° steps → 40 angles)
+        _base = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
+        pygame.draw.rect(_base, self._col, (0, 0, self.W, self.H))
+        darker = tuple(max(0, c - 50) for c in self._col)
+        pygame.draw.rect(_base, darker, (0, 0, self.W, self.H), 3)
+        self._rot_frames = [pygame.transform.rotate(_base, a * 9) for a in range(40)]
 
     @property
     def rect(self):
@@ -2253,12 +2260,7 @@ class ToyBlock:
         if not (-50 <= sx <= SCREEN_W + 50):
             return
         ry = int(self.y)
-        angle = (self._t * 9) % 360
-        tmp = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
-        pygame.draw.rect(tmp, self._col, (0, 0, self.W, self.H))
-        darker = tuple(max(0, c - 50) for c in self._col)
-        pygame.draw.rect(tmp, darker, (0, 0, self.W, self.H), 3)
-        rotated = pygame.transform.rotate(tmp, angle)
+        rotated = self._rot_frames[self._t % 40]
         rr = rotated.get_rect(center=(sx, ry + self.H // 2))
         surface.blit(rotated, rr)
 
